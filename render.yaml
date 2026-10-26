@@ -2,6 +2,7 @@ services:
   - type: web
     name: flow-intel
     runtime: python
+    plan: free
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: python -m flowintel serve
