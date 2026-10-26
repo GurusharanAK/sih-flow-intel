@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Flow Intel – AICTE Approval Flow Prototype</title>
+<style>
+:root{--bg:#FFF0C5;--cd:#FFFBEE;--tx:#14302f;--mu:#51635f;--bd:#e6d6a0;--pr:#8AD6D1;--sc:#359FA0;--pd:#1b6466;--pt:#0d3a3c;--ok:#0e4547;--wa:#6b4200;--er:#3b1200;--okb:#8AD6D1;--wab:#ffd98e;--erb:#FF8C52;--inb:#d4efe9;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f2526;--cd:#153334;--tx:#FFF0C5;--mu:#a9c4bd;--bd:#25585a;--pr:#8AD6D1;--sc:#359FA0;--pd:#8AD6D1;--pt:#0b2223;--ok:#8AD6D1;--wa:#ffd27a;--er:#FF8C52;--okb:#1d4b4c;--wab:#4a3a14;--erb:#4a2414;--inb:#1d4b4c}}
+:root[data-theme="dark"]{--bg:#0f2526;--cd:#153334;--tx:#FFF0C5;--mu:#a9c4bd;--bd:#25585a;--pr:#8AD6D1;--sc:#359FA0;--pd:#8AD6D1;--pt:#0b2223;--ok:#8AD6D1;--wa:#ffd27a;--er:#FF8C52;--okb:#1d4b4c;--wab:#4a3a14;--erb:#4a2414;--inb:#1d4b4c}
+*{box-sizing:border-box;scrollbar-width:thin;scrollbar-color:var(--sc) var(--bg)}html{background:var(--bg);scroll-padding-top:env(safe-area-inset-top,0px)}
+::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--sc);border-radius:6px;border:2px solid var(--bg)}
+body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{background:var(--pr);color:var(--pt);padding:10px 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+header b{font:600 18px Georgia,"Times New Roman",serif;margin-right:auto}header select,header button{font:inherit;padding:5px 8px;border-radius:6px;border:1px solid var(--bd);background:var(--cd);color:var(--tx)}
+.ban{background:var(--wab);color:var(--wa);padding:6px 14px;font-size:12px}
+nav{display:flex;gap:4px;overflow-x:auto;padding:8px 14px 0;border-bottom:1px solid var(--bd);background:var(--cd)}
+nav button{border:0;background:none;color:var(--mu);padding:8px 10px;font:inherit;cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
+nav button.on{color:var(--pd);border-color:var(--sc);font-weight:600}
+main{padding:14px;max-width:1150px;margin:auto}
+.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+.c{background:var(--cd);border:1px solid var(--bd);border-radius:5px;padding:12px;margin-bottom:12px}
+.k b{font-size:24px;display:block}.mu{color:var(--mu)}h2{font:600 18px Georgia,"Times New Roman",serif;margin:0 0 8px}h3{font-size:14px;margin:0 0 6px}
+.w{overflow-x:auto}table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--bd);vertical-align:top}th{color:var(--mu);font-size:12px;font-weight:600}
+.p{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;font-weight:600;white-space:nowrap}
+.ok{background:var(--okb);color:var(--ok)}.wa{background:var(--wab);color:var(--wa)}.er{background:var(--erb);color:var(--er)}.in{background:var(--inb);color:var(--pd)}
+button.b{background:var(--pr);color:var(--pt);border:1px solid var(--sc);border-radius:6px;padding:5px 10px;font:inherit;cursor:pointer;margin:2px 4px 2px 0}button.b.s{background:var(--inb);color:var(--pd)}
+input,select{font:inherit;padding:4px 6px;border:1px solid var(--bd);border-radius:6px;background:var(--cd);color:var(--tx);max-width:100%}
+.bar{height:10px;background:var(--sc);border-radius:5px}.row{display:flex;align-items:center;gap:8px;margin:4px 0}.row span:first-child{width:130px;flex:none}
+#t{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:8px 14px;border-radius:8px;max-width:90%;display:none;z-index:5}
+</style></head><body>
+<header><b>Flow Intel · AICTE approval flow</b><label>Role <select id="rs"></select></label><span id="dl"></span><button data-a="day">+1 day</button><button data-a="reset">Reset demo</button></header>
+<div class="ban">Prototype · synthetic data · DEMO rules and deadlines, not AICTE policy · simulated in this browser (no backend, no live AICTE or email/SMS) · decisions stay with humans</div>
+<nav id="nv"></nav><main id="m"></main><div id="t"></div>
+<script>
+const R=['Institution User','Regional Officer','Scrutiny Officer','EVC Coordinator','SAC/SHC Reviewer','AICTE Administrator'];
+const ST=[{k:'Submitted',role:R[1],req:['Application form','Land document']},{k:'Scrutiny',role:R[2],req:['Fee receipt','Faculty list']},{k:'EVC Scheduling',role:R[3],req:['Scrutiny report','EVC date fixed']},{k:'EVC Visit',role:R[3],req:['EVC report']},{k:'SAC/SHC Review',role:R[4],req:['SAC decision note']},{k:'Final Processing',role:R[1],req:[]},{k:'Decision recorded',role:'—',req:[]}];
+const DOC=['Application form','Land document','Fee receipt','Faculty list'];
+const INS=[['Sahyadri Institute of Technology','DEMO-1001'],['Nilgiri College of Engineering','DEMO-1002'],['Kaveri Polytechnic','DEMO-1003'],['Vindhya School of Management','DEMO-1004'],['Aravali Institute of Pharmacy','DEMO-1005'],['Coastal Tech Institute','DEMO-1006']].map(x=>({n:x[0],code:x[1]}));
+const VIEWS=[['ov','Overview'],['apps','Applications'],['wm','Workflow Monitor'],['ho','Handoffs'],['al','Delay Alerts'],['cp','Compliance Passport'],['dg','Dependency Graph'],['ru','Rule Management'],['dc','Document Review'],['au','Audit Log']];
+const K='flowintel-proto-1';let S;
+const $=s=>document.querySelector(s),D=()=>S.D,me=()=>R[S.role],E=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const save=()=>{try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}};
+const mkDoc=(a,n,exp)=>({n,exp:exp==null?null:exp,code:INS[a.iid].code,name:INS[a.iid].n,issuer:'Synthetic Authority'});
+function seed(){
+ const A='Application form',L='Land document',F='Fee receipt',Q='Faculty list',SR='Scrutiny report',ED='EVC date fixed',ER='EVC report',SN='SAC decision note';
+ const rows=[[1,0,'New Institution',1,-9,[A,L,F,Q],-9,-8],[2,1,'Extension of Approval',1,-4,[A,L,F],-4,null],[3,2,'Increase in Intake',2,-6,[A,L,F,Q,SR],-6,-5],[4,3,'New Institution',2,-8,[A,L,F,Q,SR],-3,null],[5,0,'Extension of Approval',0,-1,[A],-1,null],[6,4,'New Institution',3,-3,[A,L,F,Q,SR,ED],-3,-2],[7,5,'Closure',4,-12,[A,L,F,Q,SR,ED,ER],-12,-11],[8,1,'Increase in Intake',1,-6,[A,L,F,Q],-6,-5,-7],[9,2,'Extension of Approval',5,0,[A,L,F,Q,SR,ED,ER,SN],0,null],[10,3,'Increase in Intake',0,-5,[A],-5,null],[11,4,'New Institution',1,-1,[A,L],-1,-1],[12,0,'New Institution',3,-9,[A,L,F,Q,SR,ED],-9,-8]];
+ const apps=rows.map(r=>{const a={id:'APP-26'+String(r[0]).padStart(2,'0'),iid:r[1],type:r[2],st:r[3],entered:r[4],have:r[5],rv:1,clar:r[8]==null?null:{since:r[8]},ovr:null,ho:{sent:r[6],ack:r[7],from:r[3]?ST[r[3]-1].role:R[0]}};a.docs=a.have.filter(x=>DOC.includes(x)).map(n=>mkDoc(a,n));return a});
+ apps[0].docs[1].exp=-10;apps[2].docs.push(mkDoc(apps[2],Q));apps[3].docs[0].name='Vindhya School of Mgmt';apps[1].docs[2].code='DEMO-0000';apps[5].docs[1].exp=20;apps[10].docs[1].issuer='';
+ const ob=(i,iid,t,src,due,status,note)=>({id:'OB-'+i,iid,t,src,rule:'DEMO-CMP-01',due,status,note:note||'',ver:null,hist:[]});
+ const obs=[ob(1,0,'Fire safety certificate','Undertaking, APP-2601',-5,'pending'),ob(2,0,'Updated faculty list','Approval condition, APP-2612',10,'pending'),ob(3,1,'Lease document renewal','Approval condition, APP-2602',20,'submitted'),ob(4,2,'Annual self-disclosure','Undertaking, APP-2603',-2,'correction','Evidence is unsigned'),ob(5,3,'Affidavit on land use','Undertaking, APP-2604',40,'pending'),ob(6,4,'Audited accounts','Approval condition, APP-2606',6,'submitted'),ob(7,5,'Lease document: expiring','Approval condition, APP-2607',25,'verified'),ob(8,1,'Lab equipment list','Approval condition, APP-2608',-12,'verified')];
+ obs[6].ver={by:R[1],at:-3};obs[7].ver={by:R[1],at:-20};
+ S={D:0,role:0,view:'ov',sel:null,n:13,apps,obs,draft:null,log:[],rules:[{v:1,status:'published',by:R[5],at:-30,note:'DEMO baseline v1 (not official policy)',sla:{Submitted:3,Scrutiny:7,'EVC Scheduling':5,'EVC Visit':10,'SAC/SHC Review':10,'Final Processing':5,'Decision recorded':0}}]};
+ S.log.push({t:0,who:'System',txt:'Demo data seeded (synthetic)',ref:''});
+}
+try{S=JSON.parse(localStorage.getItem(K))}catch(e){}
+if(!S||!S.apps)seed();
+const RV=v=>S.rules.find(r=>r.v==v),latest=()=>S.rules.filter(r=>r.status=='published').pop();
+const log=(txt,ref)=>S.log.push({t:D(),who:me(),txt,ref:ref||''});
+const missing=a=>ST[a.st].req.filter(x=>!a.have.includes(x));
+const load=r=>S.apps.filter(a=>a.st<6&&ST[a.st].role==r).length;
+const INSI=DOC;
+function risk(a,ov){
+ if(a.st>=6)return{s:0,cat:'Low',f:[],bn:'Closed',na:'None',nr:'—'};
+ const st=ST[a.st],el=D()-a.entered,sla=(ov||RV(a.rv).sla)[st.k],f=[];let s=0;const add=(p,t,ev)=>{s+=p;f.push({p,t,ev})};
+ if(el>=sla)add(40,'Past configured stage time',`${el}d in ${st.k}; configured ${sla}d`);else if(el/sla>=.6)add(20,'Approaching stage deadline',`${el}d of ${sla}d used`);
+ const ms=missing(a);if(ms.length)add(Math.min(30,12*ms.length),'Missing prerequisites',ms.join(', '));
+ const un=a.ho&&a.ho.ack==null,w=un?D()-a.ho.sent:0;if(un)w>=2?add(20,'Handoff unacknowledged',`Sent ${w}d ago to ${st.role}, no acknowledgement`):add(5,'Handoff awaiting acknowledgement',`Sent ${w}d ago`);
+ if(a.clar){const c=D()-a.clar.since;add(c>5?20:10,'Clarification pending',`Requested ${c}d ago; no institution response`)}
+ if(load(st.role)>=3)add(5,'High queue load',`${load(st.role)} open cases with ${st.role} (synthetic)`);
+ s=Math.min(100,s);const inst=ms.filter(x=>INSI.includes(x));let bn,na,nr;
+ if(un&&w>=2){bn='AICTE-side (handoff unacknowledged)';na=`Acknowledge handoff for ${a.id}`;nr=st.role}
+ else if(a.clar||inst.length){bn='Institution-side';na=a.clar?'Respond to clarification':`Upload ${inst.join(', ')}`;nr=R[0]}
+ else if(a.st==2||a.st==3){bn='Scheduling-side';na=ms.length?`Resolve: ${ms.join(', ')}`:'Confirm visit schedule';nr=st.role}
+ else if(s>=30&&el>=sla){bn='AICTE-side (stage time exceeded)';na='Process or escalate the stage';nr=st.role}
+ else{bn='Undetermined';na=ms.length?`Review: ${ms.join(', ')}`:'Monitor';nr=st.role}
+ return{s,cat:s>=55?'High':s>=30?'Medium':'Low',f,bn,na,nr};
+}
+const cat=a=>a.ovr?a.ovr.cat:risk(a).cat;
+const pill=(t,c)=>`<span class="p ${c}">${t}</span>`,cc=c=>c=='High'?'er':c=='Medium'?'wa':'ok';
+const T=(h,r)=>`<div class="w"><table><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr>${r.map(x=>`<tr>${x.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')||'<tr><td colspan="9" class="mu">Nothing here.</td></tr>'}</table></div>`;
+const btn=(a,i,l,s,j)=>`<button class="b ${s?'s':''}" data-a="${a}" data-i="${i==null?'':i}" data-j="${j==null?'':E(j)}">${l}</button>`;
+const vis=()=>S.role==0?S.apps.filter(a=>a.iid==0):S.apps;
+const visO=()=>S.role==0?S.obs.filter(o=>o.iid==0):S.obs;
+function finds(a){const f=[],need=[];ST.slice(0,a.st+1).forEach(s=>s.req.forEach(x=>{if(DOC.includes(x)&&!need.includes(x))need.push(x)}));
+ need.forEach(n=>{if(!a.docs.some(d=>d.n==n))f.push(['High','Missing required document',`${n} not on file at ${ST[a.st].k}`,'document.name','Request '+n+' from the institution'])});
+ const seen={};a.docs.forEach(d=>{if(seen[d.n])f.push(['Medium','Duplicate document record',`${d.n} recorded twice`,'document.name','Keep one record after review']);seen[d.n]=1;
+  if(d.exp!=null&&d.exp<D())f.push(['High','Expired document',`${d.n} expired ${D()-d.exp}d ago`,'expiry_date','Ask for renewed '+d.n]);else if(d.exp!=null&&d.exp-D()<=30)f.push(['Low','Document expiring soon',`${d.n} expires in ${d.exp-D()}d`,'expiry_date','Plan renewal']);
+  if(d.code!=INS[a.iid].code)f.push(['High','Institution ID mismatch',`${d.n} shows ${d.code}; application is ${INS[a.iid].code}`,'institution_id','Confirm the correct ID']);
+  if(d.name!=INS[a.iid].n)f.push(['Medium','Name mismatch',`"${d.name}" vs "${INS[a.iid].n}"`,'institution_name','Verify legal name']);
+  if(!d.issuer)f.push(['Medium','Missing metadata',`${d.n} has no issuer`,'issuer','Add issuer details'])});
+ return f}
+function obSt(o){if(o.status=='verified')return['Verified','ok'];if(o.status=='submitted')return['Awaiting verification','in'];if(o.due<D())return[o.status=='correction'?'Correction needed · overdue':'Overdue','er'];if(o.status=='correction')return['Correction needed','wa'];return o.due-D()<=14?['Due soon','wa']:['Open','in']}
+const owner=a=>ST[a.st].role,ago=d=>d==0?'today':Math.abs(d)+'d ago';
+function acts(){const o=[];
+ vis().forEach(a=>{if(a.st>=6)return;const r=risk(a),own=me()==owner(a),ms=missing(a);
+  if(own&&a.ho&&a.ho.ack==null)o.push({p:90+r.s/10,t:`Acknowledge handoff ${a.id}`,w:`Sent ${D()-a.ho.sent}d ago to ${owner(a)}; unacknowledged work cannot be processed`,v:'apps',i:a.id});
+  else if(own&&!ms.length&&!a.clar)o.push({p:50+r.s/5,t:`Advance ${a.id} from ${ST[a.st].k}`,w:`Prerequisites complete; ${D()-a.entered}d in stage`,v:'apps',i:a.id});
+  if(own&&ms.length&&!ms.every(x=>INSI.includes(x)))o.push({p:70,t:`Review missing prerequisite for ${a.id}`,w:ms.join(', ')+' still outstanding',v:'apps',i:a.id});
+  if(S.role==0&&ms.some(x=>INSI.includes(x)))o.push({p:80,t:`Upload ${ms.filter(x=>INSI.includes(x)).join(', ')} for ${a.id}`,w:'Missing and blocks the next stage',v:'apps',i:a.id});
+  if(S.role==0&&a.clar)o.push({p:85,t:`Respond to clarification on ${a.id}`,w:`Pending ${D()-a.clar.since}d`,v:'apps',i:a.id});
+  if((S.role==1||S.role==5)&&r.cat=='High')o.push({p:75,t:`Review high-risk case ${a.id}`,w:`Score ${r.s}; bottleneck ${r.bn}`,v:'apps',i:a.id});
+  if((S.role==1||S.role==2)&&finds(a).some(f=>f[0]=='High'))o.push({p:65,t:`Review document flags on ${a.id}`,w:finds(a).filter(f=>f[0]=='High').map(f=>f[1]).join('; '),v:'dc',i:a.id})});
+ visO().forEach(b=>{const s=obSt(b);if(S.role==0&&(b.status=='pending'||b.status=='correction')&&b.due-D()<=14)o.push({p:b.due<D()?88:70,t:`${b.status=='correction'?'Correct':'Submit'} evidence: ${b.t}`,w:`${s[0]}; due ${b.due<D()?ago(b.due-D()):'in '+(b.due-D())+'d'}`,v:'cp',i:b.id});
+  if((S.role==1||S.role==5)&&b.status=='submitted')o.push({p:60,t:`Verify evidence: ${b.t}`,w:'Institution submitted evidence; awaiting verification',v:'cp',i:b.id})});
+ if(S.role==5&&S.draft)o.push({p:55,t:'Review rule change draft',w:`Draft v${S.draft.v} is ${S.draft.st}`,v:'ru',i:''});
+ return o.sort((a,b)=>b.p-a.p)}
+function ov(){const v=vis(),un=v.filter(a=>a.st<6&&a.ho&&a.ho.ack==null),hi=v.filter(a=>a.st<6&&cat(a)=='High'),ob=visO(),od=ob.filter(o=>obSt(o)[1]=='er'),ds=ob.filter(o=>obSt(o)[0]=='Due soon');
+ const k=(n,l)=>`<div class="c k"><b>${n}</b>${l}</div>`;
+ const bars=ST.map((s,i)=>{const n=v.filter(a=>a.st==i).length;return`<div class="row"><span>${s.k}</span><span class="bar" style="width:${n*24}px"></span><span>${n}</span></div>`}).join('');
+ return`<div class="g">${k(v.length,'Applications')}${k(v.filter(a=>a.st<6&&a.ho&&a.ho.ack!=null).length,'Handoffs acknowledged')}${k(un.length,'Unacknowledged handoffs')}${k(hi.length,'High-risk applications')}${k(od.length,'Overdue obligations')}${k(ds.length,'Obligations due soon')}</div>
+ <div class="c"><h2>Next best actions for ${me()}</h2>${T(['Action','Why','Go'],acts().slice(0,8).map(x=>[E(x.t),E(x.w),btn('go',x.v,'Open',1,x.i)]))}</div>
+ <div class="c"><h2>Applications by stage</h2>${bars}</div>
+ <div class="c"><h2>Recent activity</h2>${T(['Day','Who','Event'],S.log.slice(-5).reverse().map(l=>[l.t,E(l.who),E(l.txt)]))}</div>`}
+function apps(){const nt=S.role==0?`<div class="c"><h3>New application (Institution User)</h3><select id="nt"><option>New Institution</option><option>Extension of Approval</option><option>Increase in Intake</option><option>Closure</option></select> ${btn('new',null,'Create and submit')}</div>`:'';
+ return nt+`<div class="c"><h2>Applications</h2>${T(['ID','Institution','Type','Stage','Owner','Days in stage','Risk',''],vis().map(a=>{const r=risk(a);return[a.id,E(INS[a.iid].n),a.type,ST[a.st].k,owner(a),a.st<6?D()-a.entered:'—',a.st<6?pill(cat(a)+' '+r.s,cc(cat(a))):'—',btn('go','apps','Open',1,a.id)]}))}</div>`}
+function detail(a){const r=risk(a),st=ST[a.st],ms=missing(a),h=a.ho;const c=cat(a);
+ const fac=T(['Factor','Points','Evidence'],r.f.map(x=>[x.t,'+'+x.p,E(x.ev)]));
+ const blk=[];if(a.st>=6)blk.push('Decision already recorded');else{if(h&&h.ack==null)blk.push('Handoff not acknowledged by '+owner(a));ms.forEach(x=>blk.push('Missing prerequisite: '+x));if(a.clar)blk.push('Clarification pending from institution')}
+ const hist=S.log.filter(l=>l.ref==a.id).reverse().map(l=>[l.t,E(l.who),E(l.txt)]);
+ const od=S.obs.filter(o=>o.iid==a.iid).map(o=>[E(o.t),o.due,pill(...obSt(o))]);
+ const up=S.role==0?ms.filter(x=>INSI.includes(x)).map(x=>btn('up',a.id,'Upload '+x,0,x)).join(''):'';
+ return`<div class="c">${btn('go','apps','← All applications',1,'')}<h2>${a.id} · ${E(INS[a.iid].n)}</h2><div>${a.type} · Stage <b>${st.k}</b> · Owner <b>${owner(a)}</b> · ${a.st<6?D()-a.entered+'d in stage (configured '+RV(a.rv).sla[st.k]+'d, rule v'+a.rv+')':'closed'}</div></div>
+ <div class="c"><h2>Delay risk ${pill(c+' · '+r.s+'/100',cc(c))}${a.ovr?pill('Overridden','in'):''}</h2><div class="mu">Prototype estimate from transparent rules, not a validated prediction. Evidence is limited to recorded events; this is not an assignment of blame.</div>${fac}<p><b>Likely bottleneck:</b> ${r.bn} · <b>Suggested next action:</b> ${E(r.na)} · <b>Responsible:</b> ${r.nr}</p>
+ ${a.ovr?`<p class="mu">Override to ${a.ovr.cat} by ${a.ovr.by} on day ${a.ovr.at}: ${E(a.ovr.why)}</p>`:''}
+ ${S.role==1||S.role==5?`<select id="oc"><option>Low</option><option>Medium</option><option>High</option></select> <input id="ow" placeholder="Reason (required)"> ${btn('ovr',a.id,'Override category')}`:''}</div>
+ <div class="c"><h2>Workflow transition</h2>${blk.length?`<p>${pill('Blocked','er')} ${blk.map(E).join(' · ')}</p>`:`<p>${pill('Ready','ok')} All checks pass for the next stage.</p>`}
+ ${h?`<p class="mu">Handoff: ${h.from} → ${owner(a)}, sent day ${h.sent}, ${h.ack==null?'<b>unacknowledged</b> ('+(D()-h.sent)+'d waiting'+(D()-h.sent>=3?', escalation to Regional Officer due':'')+')':'acknowledged day '+h.ack}</p>`:''}
+ ${btn('ack',a.id,'Acknowledge handoff')}${btn('adv',a.id,a.st==5?'Record authorised decision (human)':'Advance to next stage')}${btn('rc',a.id,'Request clarification',1)} ${a.clar&&S.role==0?btn('rs',a.id,'Respond to clarification'):''}${up}</div>
+ <div class="c"><h2>Documents and review flags</h2>${T(['Document','Expiry','Issuer'],a.docs.map(d=>[E(d.n),d.exp==null?'—':'day '+d.exp,E(d.issuer||'(missing)')]))}${T(['Severity','Finding','Evidence','Correction'],finds(a).map(f=>[pill(f[0],cc(f[0])),f[1],E(f[2]),f[4]]))}</div>
+ <div class="c"><h2>Related obligations</h2>${T(['Obligation','Due (day)','Status'],od)}</div>
+ <div class="c"><h2>Stage and audit history</h2>${T(['Day','Who','Event'],hist)}</div>`}
+function hoV(){const l=vis().filter(a=>a.st<6&&a.ho),row=a=>{const h=a.ho,w=D()-h.sent;return[a.id,`${h.from} → ${owner(a)}`,ST[a.st].k,w+'d',h.ack==null?(w>=3?pill('Escalate','er'):pill('Awaiting','wa')):'day '+h.ack,btn('go','apps','Open',1,a.id)]};
+ return`<div class="c"><h2>Unacknowledged handoffs</h2>${T(['App','Handoff','Stage','Waiting','Status',''],l.filter(a=>a.ho.ack==null).sort((a,b)=>a.ho.sent-b.ho.sent).map(row))}</div><div class="c"><h2>Being processed</h2>${T(['App','Handoff','Stage','Since sent','Acknowledged',''],l.filter(a=>a.ho.ack!=null).map(row))}</div>`}
+function alV(){return`<div class="c"><h2>Delay early warnings</h2><div class="mu">Deterministic prototype scoring: stage time vs configured deadline, missing prerequisites, handoff acknowledgement, clarifications, queue load.</div>${T(['App','Risk','Top factors','Likely bottleneck','Next action','Role',''],vis().filter(a=>a.st<6).map(a=>[a,risk(a)]).sort((x,y)=>y[1].s-x[1].s).map(([a,r])=>[a.id,pill(cat(a)+' '+r.s,cc(cat(a))),E(r.f.map(x=>x.t).join('; ')||'None'),r.bn,E(r.na),r.nr,btn('go','apps','Open',1,a.id)]))}</div>`}
+function cpV(){const ver=S.role==1||S.role==5;return`<div class="c"><h2>Compliance Passport</h2><div class="mu">Demo reminder rule: in-app alert 14 and 7 days before due; overdue items escalate to the Regional Officer. No real email or SMS is sent.</div>${T(['Institution','Obligation','Source','Due (day)','Status','Detail / actions'],visO().sort((a,b)=>a.due-b.due).map(o=>{const s=obSt(o);let x=o.ver?`Verified by ${o.ver.by}, day ${o.ver.at}`:E(o.note);
+ if(S.role==0&&(o.status=='pending'||o.status=='correction'))x+=' '+btn('sub',o.id,'Submit evidence');if(ver&&o.status=='submitted')x+=` <input id="cr${o.id}" placeholder="Correction reason"> ${btn('vf',o.id,'Verify')}${btn('cr',o.id,'Request correction',1)}`;
+ if(o.hist.length)x+=`<div class="mu">History: ${E(o.hist.join(' › '))}</div>`;return[E(INS[o.iid].n),E(o.t),E(o.src)+'<br><span class="mu">'+o.rule+'</span>',o.due,pill(s[0],s[1]),x]}))}</div>`}
+function ruV(){const cur=latest(),d=S.draft,adm=S.role==5;
+ let h=`<div class="c"><h2>Rule versions · DEMO-SLA-01 (stage time limits, days)</h2>${T(['Version','Status','Created','Change summary','Limits'],S.rules.map(r=>['v'+r.v,pill(r.status,r.status=='published'?'ok':'in'),r.by+', day '+r.at,E(r.note),Object.entries(r.sla).filter(e=>e[1]).map(e=>e[0]+' '+e[1]).join(' · ')]))}</div>`;
+ if(!adm)return h+`<div class="c mu">Only the AICTE Administrator can draft and publish rules. Switch role to try it.</div>`;
+ h+=`<div class="c"><h2>Draft new version</h2>${ST.slice(0,6).map((s,i)=>`<label>${s.k} <input id="sl${i}" type="number" style="width:70px" value="${(d?d.sla:cur.sla)[s.k]}"></label> `).join('')}<br><input id="chg" placeholder="Change summary" value="${d?E(d.note):''}" style="width:260px"> ${btn('rd',null,'Save draft')}</div>`;
+ if(d){h+=`<div class="c"><h2>Draft v${d.v} · ${pill(d.st,'in')}</h2>${d.err?`<p>${pill('Validation failed','er')} ${E(d.err)}</p>`:''}${btn('rv',null,'Validate',1)}${btn('rp',null,'Preview impact',1)}`;
+  if(d.prev)h+=T(['App','Stage','Risk now','Risk under draft'],d.prev.map(p=>[p.id,p.stage,p.a,p.b]))+`<p class="mu">Affected in-progress applications: ${d.prev.filter(p=>p.a!=p.b).length} of ${d.prev.length} change risk. Existing obligations keep their due dates under this rule.</p><label>Migration decision <select id="mg"><option value="keep">Keep in-progress applications on old version</option><option value="migrate">Migrate in-progress applications to new version</option></select></label> ${btn('rb',null,'Publish')}`;
+  h+='</div>'}return h}
+function dcV(){const r=[];vis().forEach(a=>finds(a).forEach(f=>r.push([a.id,pill(f[0],cc(f[0])),f[1],E(f[2]),f[3],f[4]])));return`<div class="c"><h2>Document discrepancy checks</h2><div class="mu">Deterministic review flags only. A human reviewer decides whether a document is acceptable; nothing is auto-rejected.</div>${T(['App','Severity','Finding','Evidence','Fields','Recommended correction'],r)}</div>`}
+function wmV(){const v=vis();return`<div class="c"><h2>Workflow monitor</h2><div class="mu">Per stage: owner, configured limit (latest published rule), load and delay evidence.</div>${T(['Stage','Owner','Limit (d)','Cases','Avg days','Over limit','Unacknowledged'],ST.slice(0,6).map((s,i)=>{const l=v.filter(a=>a.st==i),o=l.filter(a=>D()-a.entered>=RV(a.rv).sla[s.k]);return[s.k,s.role,latest().sla[s.k],l.length,l.length?(l.reduce((t,a)=>t+D()-a.entered,0)/l.length).toFixed(1):'—',o.length?pill(o.length+' ('+o.map(a=>a.id).join(', ')+')','er'):'0',l.filter(a=>a.ho&&a.ho.ack==null).length]}))}</div>`}
+function dgV(){const ids=[...new Set(visO().map(o=>o.iid).concat(vis().map(a=>a.iid)))].sort();const bx=(t,c)=>`<div class="c" style="margin:4px 0;padding:6px 10px">${t}${c?' '+pill(c[0],c[1]):''}</div>`;
+ return`<div class="c"><h2>Compliance dependency graph</h2><div class="mu">What depends on an outstanding item: application → approval conditions → obligations and documents → verifier.</div></div>`+ids.map(i=>{const ap=S.apps.filter(a=>a.iid==i),ob=S.obs.filter(o=>o.iid==i),ex=ap.flatMap(a=>a.docs.filter(d=>d.exp!=null&&d.exp-D()<=30).map(d=>[a.id,d]));
+ return`<div class="c"><h3>${E(INS[i].n)}</h3><div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center"><div>${ap.map(a=>bx(a.id+' · '+a.type+' · '+ST[a.st].k)).join('')}</div><span>→</span><div>${bx('Approval conditions')}</div><span>→</span><div>${ob.map(o=>bx(E(o.t)+' · due day '+o.due,obSt(o))).join('')}${ex.map(x=>bx(E(x[1].n)+' ('+x[0]+') expiry day '+x[1].exp,['Document',x[1].exp<D()?'er':'wa'])).join('')}</div><span>→</span><div>${bx('Verifier: Regional Officer')}</div></div></div>`}).join('')}
+function auV(){return`<div class="c"><h2>Audit log</h2>${T(['Day','Actor','Event','Ref'],S.log.slice().reverse().map(l=>[l.t,E(l.who),E(l.txt),l.ref]))}</div>`}
+function render(){$('#rs').innerHTML=R.map((r,i)=>`<option value="${i}" ${i==S.role?'selected':''}>${r}</option>`).join('');$('#dl').textContent='Demo day '+S.D;
+ $('#nv').innerHTML=VIEWS.map(v=>`<button class="${S.view==v[0]?'on':''}" data-a="nav" data-i="${v[0]}">${v[1]}</button>`).join('');
+ const a=S.apps.find(x=>x.id==S.sel);$('#m').innerHTML=S.view=='apps'&&a&&vis().includes(a)?detail(a):({ov,apps,wm:wmV,ho:hoV,al:alV,cp:cpV,dg:dgV,ru:ruV,dc:dcV,au:auV})[S.view]();save()}
+const toast=m=>{const t=$('#t');t.textContent=m;t.style.display='block';clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display='none',3800)};
+const deny=(a,why)=>{toast('Denied: '+why);log('DENIED '+why,a?a.id:'');render()};
+const val=id=>{const x=document.getElementById(id);return x?x.value.trim():''};
+function act(k,i,j){const a=S.apps.find(x=>x.id==i),o=S.obs.find(x=>x.id==i);
+ if(k=='nav'){S.view=i;S.sel=null}
+ else if(k=='go'){S.view=i;S.sel=j||null}
+ else if(k=='day'){S.D++}
+ else if(k=='reset'){seed();S.role=0}
+ else if(k=='new'){if(S.role!=0)return deny(0,'only an Institution User can create applications');const n={id:'APP-26'+S.n++,iid:0,type:val('nt'),st:0,entered:D(),have:['Application form'],rv:latest().v,clar:null,ovr:null,ho:{sent:D(),ack:null,from:R[0]},docs:[]};n.docs=[mkDoc(n,'Application form')];S.apps.push(n);log('Application created and submitted; routed to Regional Officer queue',n.id);S.view='apps';S.sel=n.id}
+ else if(k=='up'){if(S.role!=0)return deny(a,'only the institution uploads documents');a.have.push(j);if(DOC.includes(j))a.docs.push(mkDoc(a,j));log('Uploaded '+j,a.id)}
+ else if(k=='ack'){if(me()!=owner(a))return deny(a,`${me()} is not the handoff recipient (${owner(a)})`);if(!a.ho||a.ho.ack!=null)return toast('Nothing to acknowledge');a.ho.ack=D();log('Handoff acknowledged',a.id)}
+ else if(k=='adv'){if(a.st>=6)return toast('Already closed');if(me()!=owner(a))return deny(a,`${me()} cannot move ${a.id}; stage owner is ${owner(a)}`);
+  const b=[];if(a.ho&&a.ho.ack==null)b.push('handoff not acknowledged');missing(a).forEach(x=>b.push('missing '+x));if(a.clar)b.push('clarification pending');
+  if(b.length){toast('Blocked: '+b.join(', '));log('Transition blocked: '+b.join(', '),a.id);return render()}
+  const f=ST[a.st];a.st++;a.entered=D();a.ho=a.st<6?{sent:D(),ack:null,from:f.role}:null;log(a.st>=6?'Authorised decision recorded by human officer':`Moved ${f.k} → ${ST[a.st].k}; handoff sent to ${ST[a.st].role}`,a.id)}
+ else if(k=='rc'){if(me()!=owner(a))return deny(a,'only the stage owner requests clarification');a.clar={since:D()};log('Clarification requested from institution',a.id)}
+ else if(k=='rs'){if(S.role!=0)return deny(a,'only the institution responds');a.clar=null;log('Clarification answered',a.id)}
+ else if(k=='ovr'){if(S.role!=1&&S.role!=5)return deny(a,'override needs Regional Officer or Administrator');if(!val('ow'))return toast('A reason is required');a.ovr={cat:val('oc'),why:val('ow'),by:me(),at:D()};log(`Risk category overridden to ${a.ovr.cat}: ${a.ovr.why}`,a.id)}
+ else if(k=='sub'){if(S.role!=0)return deny(0,'only the institution submits evidence');o.status='submitted';o.note='';o.hist.push('Submitted d'+D());log('Evidence submitted: '+o.t,o.id)}
+ else if(k=='vf'){if(S.role!=1&&S.role!=5)return deny(0,'verification needs Regional Officer or Administrator');o.status='verified';o.ver={by:me(),at:D()};o.hist.push('Verified d'+D());log('Evidence verified: '+o.t,o.id)}
+ else if(k=='cr'){if(S.role!=1&&S.role!=5)return deny(0,'verification needs Regional Officer or Administrator');const w=val('cr'+i);if(!w)return toast('Enter a correction reason');o.status='correction';o.note=w;o.hist.push('Correction asked d'+D());log('Correction requested: '+w,o.id)}
+ else if(k=='rd'||k=='rv'||k=='rp'||k=='rb'){if(S.role!=5)return deny(0,'only the AICTE Administrator manages rules');
+  if(k=='rd'){const sla={...latest().sla};ST.slice(0,6).forEach((s,n)=>sla[s.k]=parseInt(val('sl'+n)||0));S.draft={v:S.rules.length+1,st:'draft',sla,note:val('chg'),err:'',prev:null};log('Rule draft v'+S.draft.v+' saved','DEMO-SLA-01')}
+  else if(!S.draft)return toast('Save a draft first');
+  else if(k=='rv'){const d=S.draft,bad=Object.entries(d.sla).filter(e=>e[0]!='Decision recorded'&&!(e[1]>=1&&e[1]<=60));d.err=bad.length?'Limits must be 1–60 days: '+bad.map(e=>e[0]).join(', '):JSON.stringify(d.sla)==JSON.stringify(latest().sla)?'No change from current version':!d.note?'Add a change summary':'';if(!d.err)d.st='validated';log(d.err?'Draft validation failed: '+d.err:'Draft validated','DEMO-SLA-01')}
+  else if(k=='rp'){const d=S.draft;if(d.st=='draft')return toast('Validate first');d.prev=S.apps.filter(x=>x.st<6).map(x=>({id:x.id,stage:ST[x.st].k,a:risk(x).cat+' '+risk(x).s,b:risk(x,d.sla).cat+' '+risk(x,d.sla).s}));d.st='previewed';log('Impact preview generated: '+d.prev.length+' in-progress applications','DEMO-SLA-01')}
+  else{const d=S.draft;if(d.st!='previewed')return toast('Preview impact before publishing');const m=val('mg');S.rules.forEach(r=>{if(r.status=='published')r.status='retired'});S.rules.push({v:d.v,status:'published',by:me(),at:D(),note:d.note+(m=='migrate'?' (in-progress migrated)':' (in-progress kept on old version)'),sla:d.sla});if(m=='migrate')S.apps.forEach(x=>{if(x.st<6)x.rv=d.v});log(`Rule v${d.v} published; migration decision: ${m}; v${d.v-1} retained for audit`,'DEMO-SLA-01');S.draft=null}}
+ render()}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(b)act(b.dataset.a,b.dataset.i,b.dataset.j)});
+$('#rs').addEventListener('change',e=>{S.role=+e.target.value;S.view='ov';S.sel=null;render()});
+render();
+</script></body></html>

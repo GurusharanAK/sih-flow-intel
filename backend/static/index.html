@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Flow Intel – AICTE Approval Flow (API-backed prototype)</title>
+<style>
+:root{--bg:#FFF0C5;--cd:#FFFBEE;--tx:#14302f;--mu:#51635f;--bd:#e6d6a0;--pr:#8AD6D1;--sc:#359FA0;--pd:#1b6466;--pt:#0d3a3c;--ok:#0e4547;--wa:#6b4200;--er:#3b1200;--okb:#8AD6D1;--wab:#ffd98e;--erb:#FF8C52;--inb:#d4efe9;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f2526;--cd:#153334;--tx:#FFF0C5;--mu:#a9c4bd;--bd:#25585a;--pr:#8AD6D1;--sc:#359FA0;--pd:#8AD6D1;--pt:#0b2223;--ok:#8AD6D1;--wa:#ffd27a;--er:#FF8C52;--okb:#1d4b4c;--wab:#4a3a14;--erb:#4a2414;--inb:#1d4b4c}}
+:root[data-theme="dark"]{--bg:#0f2526;--cd:#153334;--tx:#FFF0C5;--mu:#a9c4bd;--bd:#25585a;--pr:#8AD6D1;--sc:#359FA0;--pd:#8AD6D1;--pt:#0b2223;--ok:#8AD6D1;--wa:#ffd27a;--er:#FF8C52;--okb:#1d4b4c;--wab:#4a3a14;--erb:#4a2414;--inb:#1d4b4c}
+*{box-sizing:border-box;scrollbar-width:thin;scrollbar-color:var(--sc) var(--bg)}html{background:var(--bg);scroll-padding-top:env(safe-area-inset-top,0px)}
+::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--sc);border-radius:6px;border:2px solid var(--bg)}
+body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{background:var(--pr);color:var(--pt);padding:10px 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+header b{font:600 18px Georgia,"Times New Roman",serif;margin-right:auto}header select,header button{font:inherit;padding:5px 8px;border-radius:6px;border:1px solid var(--bd);background:var(--cd);color:var(--tx)}
+.ban{background:var(--wab);color:var(--wa);padding:6px 14px;font-size:12px}
+nav{display:flex;gap:4px;overflow-x:auto;padding:8px 14px 0;border-bottom:1px solid var(--bd);background:var(--cd)}
+nav button{border:0;background:none;color:var(--mu);padding:8px 10px;font:inherit;cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
+nav button.on{color:var(--pd);border-color:var(--sc);font-weight:600}
+main{padding:14px;max-width:1150px;margin:auto}
+.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+.c{background:var(--cd);border:1px solid var(--bd);border-radius:5px;padding:12px;margin-bottom:12px}
+.k b{font-size:24px;display:block}.mu{color:var(--mu)}h2{font:600 18px Georgia,"Times New Roman",serif;margin:0 0 8px}h3{font-size:14px;margin:0 0 6px}
+.w{overflow-x:auto}table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--bd);vertical-align:top}th{color:var(--mu);font-size:12px;font-weight:600}
+.p{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;font-weight:600;white-space:nowrap}
+.ok{background:var(--okb);color:var(--ok)}.wa{background:var(--wab);color:var(--wa)}.er{background:var(--erb);color:var(--er)}.in{background:var(--inb);color:var(--pd)}
+button.b{background:var(--pr);color:var(--pt);border:1px solid var(--sc);border-radius:6px;padding:5px 10px;font:inherit;cursor:pointer;margin:2px 4px 2px 0}button.b.s{background:var(--inb);color:var(--pd)}
+input,select{font:inherit;padding:4px 6px;border:1px solid var(--bd);border-radius:6px;background:var(--cd);color:var(--tx);max-width:100%}
+.bar{height:10px;background:var(--sc);border-radius:5px}.row{display:flex;align-items:center;gap:8px;margin:4px 0}.row span:first-child{width:130px;flex:none}
+#t{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:8px 14px;border-radius:8px;max-width:90%;display:none;z-index:5}
+</style></head><body>
+<header><b>Flow Intel · AICTE approval flow</b><label>Role <select id="rs"></select></label><span id="dl"></span><button data-a="day" title="Administrator only (enforced by the API)">+1 day</button><button data-a="reset" title="Administrator only (enforced by the API)">Reset demo</button></header>
+<div class="ban">Prototype · synthetic data · DEMO rules and deadlines, not AICTE policy · demo logins · every action goes through the API, which enforces roles · decisions stay with humans</div>
+<nav id="nv"></nav><main id="m"></main><div id="t"></div>
+<script>
+const R=['Institution User','Regional Officer','Scrutiny Officer','EVC Coordinator','SAC/SHC Reviewer','AICTE Administrator'],U=['institution','regional','scrutiny','evc','sac','admin'];
+const STG=['Submitted','Scrutiny','EVC Scheduling','EVC Visit','SAC/SHC Review','Final Processing','Decision recorded'],DOCS=['Application form','Land document','Fee receipt','Faculty list'];
+const VIEWS=[['ov','Overview'],['apps','Applications'],['wm','Workflow Monitor'],['ho','Handoffs'],['al','Delay Alerts'],['cp','Compliance Passport'],['dg','Dependency Graph'],['ru','Rule Management'],['dc','Document Review'],['au','Audit Log']];
+const VW={application:'apps',document_check:'dc',obligation:'cp',rule:'ru'};
+const G={u:0,view:'ov',sel:null,day:0,tok:{}};
+const $=s=>document.querySelector(s),E=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const val=id=>{const x=document.getElementById(id);return x?x.value.trim():''};
+async function api(p,m,b){const u=U[G.u];if(!G.tok[u]){const l=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:'demo1234'})});G.tok[u]=(await l.json()).token}
+ const r=await fetch(p,{method:m||'GET',headers:{'Content-Type':'application/json',Authorization:'Bearer '+G.tok[u]},body:m=='POST'?JSON.stringify(b||{}):undefined});let d={};try{d=await r.json()}catch(e){}return{ok:r.ok,s:r.status,d}}
+const pill=(t,c)=>`<span class="p ${c}">${E(t)}</span>`,cc=c=>c=='High'?'er':c=='Medium'?'wa':'ok';
+const T=(h,r)=>`<div class="w"><table><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr>${r.map(x=>`<tr>${x.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')||'<tr><td colspan="9" class="mu">Nothing here.</td></tr>'}</table></div>`;
+const btn=(a,i,l,s,j)=>`<button class="b ${s?'s':''}" data-a="${a}" data-i="${i==null?'':E(i)}" data-j="${j==null?'':E(j)}">${l}</button>`;
+const osty=s=>s.includes('overdue')||s=='Overdue'?'er':s=='Verified'?'ok':s=='Awaiting verification'?'in':s.startsWith('Correction')||s=='Due soon'?'wa':'in';
+const ov=d=>{const k=(n,l)=>`<div class="c k"><b>${n}</b>${l}</div>`,o=d.obligations;
+ return`<div class="g">${k(d.total_applications,'Applications')}${k(d.pending_handoffs,'Pending handoffs')}${k(d.unacknowledged_handoffs,'Unacknowledged handoffs')}${k(d.high_risk_applications,'High-risk applications')}${k(o.overdue,'Overdue obligations')}${k(o.due_soon,'Obligations due soon')}</div>
+<div class="c"><h2>Next best actions for ${R[G.u]}</h2>${T(['Action','Why',''],d.next_actions.map(x=>[E(x.action),E(x.why),btn('go',VW[x.link.type],'Open',1,x.link.id)]))}</div>
+<div class="c"><h2>Applications by stage</h2>${STG.map(s=>`<div class="row"><span>${s}</span><span class="bar" style="width:${d.by_stage[s]*24}px"></span><span>${d.by_stage[s]}</span></div>`).join('')}</div>
+<div class="c"><h2>Recent activity</h2>${T(['Day','Role','Event'],d.recent_activity.map(l=>[l.day,E(l.role),E(l.action+(l.detail?': '+l.detail:''))]))}</div>`};
+const apps=l=>(G.u==0?`<div class="c"><h3>New application (Institution User)</h3><select id="nt"><option>New Institution</option><option>Extension of Approval</option><option>Increase in Intake</option><option>Closure</option></select> ${btn('new',null,'Create and submit')}</div>`:'')+`<div class="c"><h2>Applications</h2>${T(['ID','Institution','Type','Stage','Owner','Days in stage','Risk',''],l.map(a=>[a.id,E(a.institution),a.type,a.stage,a.owner_role,a.days_in_stage==null?'-':a.days_in_stage,a.days_in_stage==null?'-':pill(a.risk_category+' '+a.risk_score,cc(a.risk_category)),btn('go','apps','Open',1,a.id)]))}</div>`;
+const detail=a=>{const r=a.risk,h=a.current_handoff,c=a.risk_category;
+ return`<div class="c">${btn('go','apps','← All applications',1,'')}<h2>${a.id} · ${E(a.institution)}</h2><div>${a.type} · Stage <b>${a.stage}</b> · Owner <b>${a.owner_role}</b> · ${a.days_in_stage==null?'closed':a.days_in_stage+'d in stage (configured '+a.configured_stage_days+'d, rule v'+a.rule_version+')'}</div></div>
+<div class="c"><h2>Delay risk ${pill(c+' · '+a.risk_score+'/100',cc(c))}${a.override?pill('Overridden','in'):''}</h2><div class="mu">${E(r.disclaimer)}</div>${T(['Factor','Points','Evidence'],r.factors.map(x=>[E(x.factor),'+'+x.points,E(x.evidence)]))}<p><b>Likely bottleneck:</b> ${E(r.bottleneck)} · <b>Suggested next action:</b> ${E(r.next_action)} · <b>Responsible:</b> ${r.responsible_role}</p>
+${a.override?`<p class="mu">Override to ${a.override.category} by ${a.override.role} on day ${a.override.day}: ${E(a.override.reason)}</p>`:''}
+${G.u==1||G.u==5?`<select id="oc"><option>Low</option><option>Medium</option><option>High</option></select> <input id="ow" placeholder="Reason (required)"> ${btn('ovr',a.id,'Override category')}`:''}</div>
+<div class="c"><h2>Workflow transition</h2>${a.blockers.length?`<p>${pill('Blocked','er')} ${a.blockers.map(E).join(' · ')}</p>`:`<p>${pill('Ready','ok')} All checks pass for the next stage.</p>`}
+${h?`<p class="mu">Handoff: ${h.from_role} → ${h.to_role}, sent day ${h.sent}, ${h.acknowledged?'acknowledged day '+h.ack:'<b>unacknowledged</b> ('+h.waiting_days+'d waiting'+(h.escalation?', escalation to Regional Officer due':'')+')'}</p>`:''}
+${btn('ack',a.id,'Acknowledge handoff')}${btn('adv',a.id,a.stage=='Final Processing'?'Record authorised decision (human)':'Advance to next stage')}${btn('rc',a.id,'Request clarification',1)} ${a.clarification_pending&&G.u==0?btn('rs',a.id,'Respond to clarification'):''}${G.u==0?a.prerequisites_missing.filter(x=>DOCS.includes(x)).map(x=>btn('up',a.id,'Upload '+x,0,x)).join(''):''}</div>
+<div class="c"><h2>Documents and review flags</h2>${T(['Document','Expiry','Issuer'],a.documents.map(d=>[E(d.name),d.expiry==null?'-':'day '+d.expiry,E(d.issuer||'(missing)')]))}${T(['Severity','Finding','Evidence','Correction'],a.document_findings.map(f=>[pill(f.severity,cc(f.severity)),f.finding,E(f.evidence),f.recommendation]))}</div>
+<div class="c"><h2>Related obligations</h2>${T(['Obligation','Due (day)','Status'],a.obligations.map(o=>[E(o.title),o.due,pill(o.display_status,osty(o.display_status))]))}</div>
+<div class="c"><h2>Handoff history</h2>${T(['Handoff','Sent','Acknowledged'],a.handoff_history.map(x=>[E(x.from_role+' → '+x.to_role),'day '+x.sent,x.acknowledged?'day '+x.ack:'no']))}</div>
+<div class="c"><h2>Stage and audit history</h2>${T(['Day','Role','Event'],a.history.map(l=>[l.day,E(l.role),E(l.action+(l.detail?': '+l.detail:''))]))}</div>`};
+const hoV=l=>{const row=h=>[h.application_id,E(h.from_role+' → '+h.to_role),h.to_stage,h.waiting_days+'d',h.acknowledged?'day '+h.ack:(h.escalation?pill('Escalate','er'):pill('Awaiting','wa')),btn('go','apps','Open',1,h.application_id)];
+ return`<div class="c"><h2>Unacknowledged handoffs</h2>${T(['App','Handoff','Stage','Waiting','Status',''],l.filter(h=>!h.acknowledged).map(row))}</div><div class="c"><h2>Being processed</h2>${T(['App','Handoff','Stage','Took to acknowledge','Acknowledged',''],l.filter(h=>h.acknowledged).map(row))}</div>`};
+const alV=l=>`<div class="c"><h2>Delay early warnings</h2><div class="mu">Deterministic prototype scoring computed by the API: stage time vs configured deadline, missing prerequisites, handoff acknowledgement, clarifications, queue load.</div>${T(['App','Risk','Top factors','Likely bottleneck','Next action','Role',''],l.map(a=>[a.id,pill(a.risk_category+' '+a.risk_score,cc(a.risk_category)),E(a.risk.factors.map(x=>x.factor).join('; ')||'None'),E(a.risk.bottleneck),E(a.risk.next_action),a.risk.responsible_role,btn('go','apps','Open',1,a.id)]))}</div>`;
+const cpV=l=>`<div class="c"><h2>Compliance Passport</h2><div class="mu">Demo reminder rule: in-app alert 14 and 7 days before due; overdue items escalate to the Regional Officer. No real email or SMS is sent.</div>${T(['Institution','Obligation','Source','Due (day)','Status','Detail / actions'],l.map(o=>{let x=o.ver_by?`Verified by ${o.ver_by}, day ${o.ver_at}`:E(o.note);
+ if(G.u==0&&(o.status=='pending'||o.status=='correction'))x+=' '+btn('sub',o.id,'Submit evidence');
+ if((G.u==1||G.u==5)&&o.status=='submitted')x+=` <input id="cr${o.id}" placeholder="Correction reason"> ${btn('vf',o.id,'Verify')}${btn('cr',o.id,'Request correction',1)}`;
+ if(o.history.length)x+=`<div class="mu">History: ${E(o.history.map(e=>'d'+e.day+' '+e.event).join(' › '))}</div>`;
+ return[E(o.institution),E(o.title),E(o.source)+'<br><span class="mu">'+o.rule+'</span>',o.due,pill(o.display_status,osty(o.display_status)),x]}))}</div>`;
+const ruV=d=>{const vs=d.versions,pub=vs.filter(v=>v.status=='published').pop(),dr=vs.find(v=>['draft','validated','previewed'].includes(v.status));
+ let h=`<div class="c"><h2>Rule versions · DEMO-SLA-01 (stage time limits, days)</h2>${T(['Version','Status','Created','Change summary','Limits'],vs.filter(v=>v!=dr).map(r=>['v'+r.version,pill(r.status,r.status=='published'?'ok':'in'),E(r.by)+', day '+r.day,E(r.note),Object.entries(r.sla).filter(e=>e[1]).map(e=>e[0]+' '+e[1]).join(' · ')]))}</div>`;
+ if(G.u!=5)return h+`<div class="c mu">Only the AICTE Administrator can draft and publish rules; the API refuses other roles.</div>`;
+ const base=(dr||pub).sla;
+ h+=`<div class="c"><h2>Draft new version</h2>${STG.slice(0,6).map((s,i)=>`<label>${s} <input id="sl${i}" type="number" style="width:70px" value="${base[s]}"></label> `).join('')}<br><input id="chg" placeholder="Change summary" value="${E(dr?dr.note:'')}" style="width:260px"> ${btn('rd',null,'Save draft')}</div>`;
+ if(dr){h+=`<div class="c"><h2>Draft v${dr.version} · ${pill(dr.status,'in')}</h2>${dr.validation_error?`<p>${pill('Validation failed','er')} ${E(dr.validation_error)}</p>`:''}${btn('rv',null,'Validate',1)}${btn('rp',null,'Preview impact',1)}`;
+  if(dr.preview){const p=dr.preview;h+=T(['App','Stage','Risk now','Risk under draft'],p.applications.map(x=>[x.application_id,x.stage,x.risk_now,x.risk_under_draft]))+`<p class="mu">${p.affected} of ${p.in_progress} in-progress applications change risk. ${E(p.obligations_note)}</p><label>Migration decision <select id="mg"><option value="keep">Keep in-progress applications on old version</option><option value="migrate">Migrate in-progress applications to new version</option></select></label> ${btn('rb',null,'Publish')}`}
+  h+='</div>'}return h};
+const dcV=l=>`<div class="c"><h2>Document discrepancy checks</h2><div class="mu">Deterministic review flags only. A human reviewer decides whether a document is acceptable; nothing is auto-rejected.</div>${T(['App','Severity','Finding','Evidence','Fields','Recommended correction'],l.map(f=>[f.application_id,pill(f.severity,cc(f.severity)),f.finding,E(f.evidence),f.fields.join(', '),f.recommendation]))}</div>`;
+const auV=l=>`<div class="c"><h2>Audit log</h2>${T(['Day','Actor','Event','Ref'],l.map(x=>[x.day,E(x.role+' ('+x.actor+')'),E(x.action+(x.detail?': '+x.detail:'')),E(x.ref)]))}</div>`;
+const wmV=(l,rules)=>{const sla=v=>rules.versions.find(r=>r.version==v).sla,cur=rules.versions.filter(r=>r.status=='published').pop().sla;
+ return`<div class="c"><h2>Workflow monitor</h2><div class="mu">Per stage: owner, configured limit (latest published rule), load and delay evidence.</div>${T(['Stage','Cases','Avg days','Over limit','Unacknowledged'],STG.slice(0,6).map(s=>{const c=l.filter(a=>a.stage==s),o=c.filter(a=>a.days_in_stage>=sla(a.rule_version)[s]);
+ return[s+' <span class="mu">('+(c[0]?c[0].owner_role:'')+', limit '+cur[s]+'d)</span>',c.length,c.length?(c.reduce((t,a)=>t+a.days_in_stage,0)/c.length).toFixed(1):'-',o.length?pill(o.length+' ('+o.map(a=>a.id).join(', ')+')','er'):'0',c.filter(a=>a.handoff_acknowledged===false).length]}))}</div>`};
+const dgV=(ob,ap,fd)=>{const ids=[...new Set(ob.map(o=>o.iid).concat(ap.map(a=>a.institution_id)))].sort(),bx=(t,c)=>`<div class="c" style="margin:4px 0;padding:6px 10px">${t}${c?' '+pill(c[0],c[1]):''}</div>`,nm={};ap.forEach(a=>nm[a.institution_id]=a.institution);ob.forEach(o=>nm[o.iid]=o.institution);
+ return`<div class="c"><h2>Compliance dependency graph</h2><div class="mu">What depends on an outstanding item: application → approval conditions → obligations and documents → verifier.</div></div>`+ids.map(i=>`<div class="c"><h3>${E(nm[i])}</h3><div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center"><div>${ap.filter(a=>a.institution_id==i).map(a=>bx(a.id+' · '+a.type+' · '+a.stage)).join('')}</div><span>→</span><div>${bx('Approval conditions')}</div><span>→</span><div>${ob.filter(o=>o.iid==i).map(o=>bx(E(o.title)+' · due day '+o.due,[o.display_status,osty(o.display_status)])).join('')}${fd.filter(f=>ap.some(a=>a.id==f.application_id&&a.institution_id==i)&&/xpir/.test(f.finding)).map(f=>bx(E(f.evidence)+' ('+f.application_id+')',['Document',f.finding.startsWith('Expired')?'er':'wa'])).join('')}</div><span>→</span><div>${bx('Verifier: Regional Officer')}</div></div></div>`).join('')};
+const toast=m=>{const t=$('#t');t.textContent=m;t.style.display='block';clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display='none',4200)};
+async function render(){$('#rs').innerHTML=R.map((r,i)=>`<option value="${i}" ${i==G.u?'selected':''}>${r}</option>`).join('');
+ $('#nv').innerHTML=VIEWS.map(v=>`<button class="${G.view==v[0]?'on':''}" data-a="nav" data-i="${v[0]}">${v[1]}</button>`).join('');
+ try{const dr=await api('/api/dashboard');G.day=dr.d.day;$('#dl').textContent='Demo day '+G.day;const v=G.view,L=async p=>(await api(p)).d;let h;
+  if(v=='ov')h=ov(dr.d);
+  else if(v=='apps'){if(G.sel){const r=await api('/api/applications/'+G.sel);h=r.ok?detail(r.d):`<div class="c">${E(r.d.error.message)}</div>`}else h=apps((await L('/api/applications?size=100')).items)}
+  else if(v=='wm')h=wmV((await L('/api/applications?size=100')).items,await L('/api/rules'));
+  else if(v=='ho')h=hoV((await L('/api/handoffs?size=100')).items);
+  else if(v=='al')h=alV((await L('/api/alerts?size=100')).items);
+  else if(v=='cp')h=cpV((await L('/api/obligations?size=100')).items);
+  else if(v=='dg')h=dgV((await L('/api/obligations?size=100')).items,(await L('/api/applications?size=100')).items,(await L('/api/document-checks?size=100')).items);
+  else if(v=='ru')h=ruV(await L('/api/rules'));
+  else if(v=='dc')h=dcV((await L('/api/document-checks?size=100')).items);
+  else h=auV((await L('/api/audit?size=100')).items);
+  $('#m').innerHTML=h}catch(e){$('#m').innerHTML='<div class="c">Cannot reach the API. Start it with <code>python -m flowintel serve</code> and open this page from that server.</div>'}}
+async function act(k,i,j){
+ if(k=='nav'){G.view=i;G.sel=null;return render()}
+ if(k=='go'){G.view=i;G.sel=i=='apps'&&j?j:null;return render()}
+ const P=(p,b)=>api(p,'POST',b),A='/api/applications/'+i,O='/api/obligations/'+i;let r;
+ if(k=='day')r=await P('/api/demo/advance-day');else if(k=='reset')r=await P('/api/demo/reset');
+ else if(k=='new'){r=await P('/api/applications',{type:val('nt')});if(r.ok){G.sel=r.d.id;G.view='apps'}}
+ else if(k=='up')r=await P(A+'/documents',{item:j});else if(k=='ack')r=await P(A+'/handoff/ack');else if(k=='adv')r=await P(A+'/advance');
+ else if(k=='rc')r=await P(A+'/clarification');else if(k=='rs')r=await P(A+'/clarification/respond');
+ else if(k=='ovr')r=await P(A+'/risk-override',{category:val('oc'),reason:val('ow')});
+ else if(k=='sub')r=await P(O+'/evidence',{evidence:'synthetic evidence file'});else if(k=='vf')r=await P(O+'/verify');else if(k=='cr')r=await P(O+'/correction',{reason:val('cr'+i)});
+ else if(k=='rd'){const sla={};['Submitted','Scrutiny','EVC Scheduling','EVC Visit','SAC/SHC Review','Final Processing'].forEach((s,n)=>sla[s]=parseInt(val('sl'+n)||0));r=await P('/api/rules/draft',{sla,note:val('chg')})}
+ else if(k=='rv')r=await P('/api/rules/draft/validate');else if(k=='rp')r=await P('/api/rules/draft/preview');else if(k=='rb')r=await P('/api/rules/draft/publish',{migration:val('mg')});
+ if(k=='rv'&&r.ok&&!r.d.valid)toast('Validation failed: '+r.d.error);else toast(r.ok?'Done':r.d.error.message);
+ if(k=='reset'&&r.ok){G.sel=null}render()}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(b)act(b.dataset.a,b.dataset.i,b.dataset.j)});
+$('#rs').addEventListener('change',e=>{G.u=+e.target.value;G.view='ov';G.sel=null;render()});
+render();
+</script></body></html>

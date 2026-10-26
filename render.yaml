@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: flow-intel
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m flowintel serve
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: FLOWINTEL_SECRET
+        generateValue: true
