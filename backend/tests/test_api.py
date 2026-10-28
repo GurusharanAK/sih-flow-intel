@@ -94,6 +94,68 @@ class Api(unittest.TestCase):
         self.assertEqual((v[1]["status"], v[2]["status"]), ("retired", "published")); self.assertEqual(v[1]["sla"]["Scrutiny"], 7)
         self.assertEqual(self.call("GET", "/api/applications/APP-2601", "regional")[1]["rule_version"], 1)  # not silently migrated
 
+    def test_required_documents_rule(self):  # second rule type: required documents per application type
+        d = lambda body: self.call("POST", "/api/rules/draft", "admin", body)
+        self.assertEqual(d({"docs": {"Bogus type": ["Application form"]}})[0], 422)
+        self.assertEqual(d({})[0], 422)
+        d({"docs": {"New Institution": ["Land document", "Fee receipt"]}, "note": "x"})  # missing Application form
+        v = self.call("POST", "/api/rules/draft/validate", "admin")[1]
+        self.assertFalse(v["valid"]); self.assertIn("Application form is always required", v["error"])
+        base = ["Application form", "Land document", "Fee receipt", "Faculty list"]
+        d({"docs": {"New Institution": base + ["Fire safety certificate"], "Increase in Intake": base + ["Fire safety certificate"]}, "note": "Fire safety certificate (demo)"})
+        v = self.call("POST", "/api/rules/draft/validate", "admin")[1]
+        self.assertTrue(v["valid"]); self.assertEqual(v["changed_sections"], ["Required documents"])
+        pv = self.call("POST", "/api/rules/draft/preview", "admin")[1]
+        hit = {r["application_id"]: r for r in pv["applications"]}
+        self.assertEqual(hit["APP-2601"]["newly_required"], ["Fire safety certificate"])   # New Institution at Scrutiny
+        self.assertEqual(hit["APP-2607"]["newly_required"], [])                            # Closure unaffected
+        self.assertEqual(self.call("POST", "/api/rules/draft/publish", "admin", {"migration": "keep"})[0], 200)
+        a = self.call("GET", "/api/applications/APP-2601", "regional")[1]
+        self.assertNotIn("Fire safety certificate", a["prerequisites_missing"])            # kept on v1, not silently changed
+        self.assertEqual(a["rule_version"], 1)
+        rules = {x["version"]: x for x in self.call("GET", "/api/rules", "regional")[1]["versions"]}
+        self.assertNotIn("Fire safety certificate", rules[1]["docs"]["New Institution"]); self.assertIn("Fire safety certificate", rules[2]["docs"]["New Institution"])
+        # a second draft migrates in-progress applications to the new version
+        d({"docs": {"New Institution": base + ["Fire safety certificate", "Affiliation letter"]}, "note": "Also affiliation letter"})
+        self.call("POST", "/api/rules/draft/validate", "admin"); self.call("POST", "/api/rules/draft/preview", "admin")
+        self.call("POST", "/api/rules/draft/publish", "admin", {"migration": "migrate"})
+        a = self.call("GET", "/api/applications/APP-2601", "regional")[1]
+        self.assertEqual(a["rule_version"], 3); self.assertIn("Fire safety certificate", a["prerequisites_missing"])
+        s, b = self.call("POST", "/api/applications/APP-2601/advance", "scrutiny")
+        self.assertEqual(s, 409)
+        self.assertEqual(self.call("POST", "/api/applications/APP-2601/documents", "institution", {"item": "Fire safety certificate"})[0], 201)
+        self.assertIn("Fire safety certificate", [x["name"] for x in self.call("GET", "/api/applications/APP-2601", "regional")[1]["documents"]])
+
+    def test_no_stuck_file_on_internal_prerequisite(self):  # bug: file stuck between institution and EVC coordinator
+        c = self.call
+        aid = c("POST", "/api/applications", "institution", {"type": "New Institution"})[1]["id"]
+        c("POST", f"/api/applications/{aid}/handoff/ack", "regional"); c("POST", f"/api/applications/{aid}/documents", "institution", {"item": "Land document"})
+        self.assertEqual(c("POST", f"/api/applications/{aid}/advance", "regional")[0], 200)
+        c("POST", f"/api/applications/{aid}/handoff/ack", "scrutiny")
+        for it in ("Fee receipt", "Faculty list"): c("POST", f"/api/applications/{aid}/documents", "institution", {"item": it})
+        s, b = c("POST", f"/api/applications/{aid}/advance", "scrutiny")  # root cause: cannot skip the scrutiny report
+        self.assertEqual(s, 409); self.assertTrue(any("Scrutiny report" in x for x in b["error"]["details"]))
+        self.assertEqual(c("POST", f"/api/applications/{aid}/documents", "institution", {"item": "Scrutiny report"})[0], 403)  # institution cannot supply it
+        self.assertEqual(c("POST", f"/api/applications/{aid}/internal-items", "evc", {"item": "Scrutiny report"})[0], 403)
+        self.assertEqual(c("POST", f"/api/applications/{aid}/internal-items", "scrutiny", {"item": "Scrutiny report"})[0], 201)
+        self.assertEqual(c("POST", f"/api/applications/{aid}/advance", "scrutiny")[0], 200)
+        c("POST", f"/api/applications/{aid}/handoff/ack", "evc")
+        self.assertEqual(c("POST", f"/api/applications/{aid}/clarification", "evc", {})[0], 422)  # a reason is required
+        self.assertEqual(c("POST", f"/api/applications/{aid}/clarification", "evc", {"reason": "Confirm preferred visit dates"})[0], 200)
+        d = c("GET", f"/api/applications/{aid}", "institution")[1]
+        self.assertEqual(d["clarification"]["reason"], "Confirm preferred visit dates")
+        self.assertEqual(c("POST", f"/api/applications/{aid}/clarification/withdraw", "institution")[0], 403)
+        self.assertEqual(c("POST", f"/api/applications/{aid}/clarification/withdraw", "evc")[0], 200)  # owner can always unblock
+        self.assertEqual(c("POST", f"/api/applications/{aid}/return", "evc", {})[0], 422)
+        s, b = c("POST", f"/api/applications/{aid}/return", "evc", {"reason": "Scrutiny report needs correction"})
+        self.assertEqual((s, b["stage"], b["owner_role"]), (200, "Scrutiny", "Scrutiny Officer"))
+        self.assertEqual(c("GET", f"/api/applications/{aid}", "scrutiny")[1]["current_handoff"]["to_role"], "Scrutiny Officer")
+        self.assertEqual(c("POST", f"/api/applications/{aid}/return", "scrutiny", {"reason": "x"})[0], 200)  # back to Submitted
+        self.assertEqual(c("POST", f"/api/applications/{aid}/return", "regional", {"reason": "x"})[0], 409)  # first stage
+        # missing_detail tells who can provide each item
+        md = c("GET", "/api/applications/APP-2603", "evc")[1]["missing_detail"]
+        self.assertEqual(md, [{"item": "EVC date fixed", "provider_role": "EVC Coordinator", "institution_provided": False}])
+
     def test_s7_document_flags(self):  # Scenario 7
         f = self.call("GET", "/api/document-checks?application_id=APP-2601", "scrutiny")[1]["items"]
         self.assertTrue(any(x["finding"] == "Expired document" for x in f))
