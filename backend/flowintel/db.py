@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS obligations(id TEXT PRIMARY KEY, iid INTEGER NOT NULL
   rule TEXT, due INTEGER, status TEXT, note TEXT, ver_by TEXT, ver_at INTEGER);
 CREATE TABLE IF NOT EXISTS obligation_events(id INTEGER PRIMARY KEY AUTOINCREMENT, ob_id TEXT REFERENCES obligations(id), day INTEGER, actor TEXT, event TEXT);
 CREATE TABLE IF NOT EXISTS rules(version INTEGER PRIMARY KEY, status TEXT NOT NULL, sla TEXT NOT NULL, by_user TEXT, at INTEGER, note TEXT,
-  migration TEXT, err TEXT, preview TEXT);
+  migration TEXT, err TEXT, preview TEXT, docs TEXT);
 CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT, day INTEGER, ts TEXT DEFAULT CURRENT_TIMESTAMP, actor TEXT, role TEXT, action TEXT, ref TEXT, detail TEXT);
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
 CREATE INDEX IF NOT EXISTS ix_app_stage ON applications(stage);
@@ -24,10 +24,23 @@ CREATE INDEX IF NOT EXISTS ix_ho_app ON handoffs(app_id);
 CREATE INDEX IF NOT EXISTS ix_audit_ref ON audit(ref);
 """
 ROLES = ["Institution User", "Regional Officer", "Scrutiny Officer", "EVC Coordinator", "SAC/SHC Reviewer", "AICTE Administrator"]
-STAGES = [("Submitted", ROLES[1], ["Application form", "Land document"]), ("Scrutiny", ROLES[2], ["Fee receipt", "Faculty list"]),
-          ("EVC Scheduling", ROLES[3], ["Scrutiny report", "EVC date fixed"]), ("EVC Visit", ROLES[3], ["EVC report"]),
+STAGES = [("Submitted", ROLES[1], []), ("Scrutiny", ROLES[2], ["Scrutiny report"]),
+          ("EVC Scheduling", ROLES[3], ["EVC date fixed"]), ("EVC Visit", ROLES[3], ["EVC report"]),
           ("SAC/SHC Review", ROLES[4], ["SAC decision note"]), ("Final Processing", ROLES[1], []), ("Decision recorded", "-", [])]
-DOCS = ["Application form", "Land document", "Fee receipt", "Faculty list"]
+# Document catalogue (institution-provided) with the stage index at which each is first needed. Which documents an
+# application type needs is NOT hard-coded: it comes from the published rule version (rules.docs).
+# Internal (non-institution) prerequisites and the only role that can record each one.
+PRODUCER = {"Scrutiny report": ROLES[2], "EVC date fixed": ROLES[3], "EVC report": ROLES[3], "SAC decision note": ROLES[4]}
+DOCS = ["Application form", "Land document", "Fee receipt", "Faculty list", "Fire safety certificate", "Affiliation letter"]
+DOC_STAGE = {"Application form": 0, "Land document": 0, "Fee receipt": 1, "Faculty list": 1, "Fire safety certificate": 1, "Affiliation letter": 1}
+APP_TYPES = ["New Institution", "Extension of Approval", "Increase in Intake", "Closure"]
+BASE_DOCS = {t: ["Application form", "Land document", "Fee receipt", "Faculty list"] for t in APP_TYPES}  # DEMO baseline
+
+
+def required_items(stage, typ, docs_rule):
+    """Prerequisites to leave `stage`: rule-driven documents for the type plus internal (non-institution) items."""
+    return [d for d in docs_rule.get(typ, []) if DOC_STAGE.get(d) == stage] + STAGES[stage][2]
+
 BASE_SLA = {"Submitted": 3, "Scrutiny": 7, "EVC Scheduling": 5, "EVC Visit": 10, "SAC/SHC Review": 10, "Final Processing": 5, "Decision recorded": 0}
 INSTITUTIONS = [("Sahyadri Institute of Technology", "DEMO-1001"), ("Nilgiri College of Engineering", "DEMO-1002"), ("Kaveri Polytechnic", "DEMO-1003"),
                 ("Vindhya School of Management", "DEMO-1004"), ("Aravali Institute of Pharmacy", "DEMO-1005"), ("Coastal Tech Institute", "DEMO-1006")]
@@ -62,7 +75,7 @@ def seed(db):
         db.execute("INSERT INTO institutions VALUES(?,?,?)", (i, n, c))
     for u, r, iid in DEMO_USERS:
         db.execute("INSERT INTO users(username,pw,role,iid) VALUES(?,?,?,?)", (u, hash_pw(DEMO_PASSWORD), r, iid))
-    db.execute("INSERT INTO rules VALUES(1,'published',?,?,?,?,NULL,NULL,NULL)", (json.dumps(BASE_SLA), ROLES[5], -30, "DEMO baseline v1 (not official policy)"))
+    db.execute("INSERT INTO rules VALUES(1,'published',?,?,?,?,NULL,NULL,NULL,?)", (json.dumps(BASE_SLA), ROLES[5], -30, "DEMO baseline v1 (not official policy)", json.dumps(BASE_DOCS)))
     A, L, F, Q, SR, ED, ER, SN = DOCS[0], DOCS[1], DOCS[2], DOCS[3], "Scrutiny report", "EVC date fixed", "EVC report", "SAC decision note"
     rows = [(1, 0, "New Institution", 1, -9, [A, L, F, Q], -9, -8, None), (2, 1, "Extension of Approval", 1, -4, [A, L, F], -4, None, None),
             (3, 2, "Increase in Intake", 2, -6, [A, L, F, Q, SR], -6, -5, None), (4, 3, "New Institution", 2, -8, [A, L, F, Q, SR], -3, None, None),
@@ -76,7 +89,7 @@ def seed(db):
         frm = STAGES[st - 1][1] if st else ROLES[0]
         db.execute("INSERT INTO handoffs(app_id,from_role,to_role,from_stage,to_stage,sent,ack,ack_by,expected_by,missing) VALUES(?,?,?,?,?,?,?,?,?,?)",
                    (aid, frm, STAGES[st][1], STAGES[st - 1][0] if st else "Applicant", STAGES[st][0], sent, ack, STAGES[st][1] if ack is not None else None,
-                    sent + BASE_SLA[STAGES[st][0]], json.dumps([x for x in STAGES[st][2] if x not in have])))
+                    sent + BASE_SLA[STAGES[st][0]], json.dumps([x for x in required_items(st, typ, BASE_DOCS) if x not in have])))
         for d in [x for x in have if x in DOCS]:
             db.execute("INSERT INTO documents(app_id,name,expiry,code,inst_name,issuer) VALUES(?,?,?,?,?,?)", (aid, d, None, INSTITUTIONS[iid][1], INSTITUTIONS[iid][0], "Synthetic Authority"))
     db.execute("UPDATE documents SET expiry=-10 WHERE app_id='APP-2601' AND name=?", (L,))
