@@ -1,7 +1,7 @@
 """Deterministic business logic: risk scoring, document checks, obligation status, next actions.
 Scores are PROTOTYPE ESTIMATES from transparent rules, not validated predictions. No statutory decisions are made here."""
 import json
-from .db import DOCS, ROLES, STAGES
+from .db import DOCS, DOC_STAGE, PRODUCER, ROLES, STAGES, required_items
 
 DISCLAIMER = "Prototype estimate from transparent rules; not a validated prediction. Based only on recorded events; not an assignment of blame."
 
@@ -9,6 +9,7 @@ DISCLAIMER = "Prototype estimate from transparent rules; not a validated predict
 def load_ctx(db):
     day = int(db.execute("SELECT v FROM meta WHERE k='day'").fetchone()[0])
     slas = {r["version"]: json.loads(r["sla"]) for r in db.execute("SELECT version,sla FROM rules")}
+    docs = {r["version"]: json.loads(r["docs"]) for r in db.execute("SELECT version,docs FROM rules")}
     inst = {r["id"]: dict(r) for r in db.execute("SELECT * FROM institutions")}
     apps, loads = [], {}
     for r in db.execute("SELECT * FROM applications ORDER BY id"):
@@ -21,18 +22,18 @@ def load_ctx(db):
         apps.append(a)
         if a["stage"] < 6:
             loads[STAGES[a["stage"]][1]] = loads.get(STAGES[a["stage"]][1], 0) + 1
-    return {"day": day, "slas": slas, "inst": inst, "apps": apps, "loads": loads}
+    return {"day": day, "slas": slas, "docs": docs, "inst": inst, "apps": apps, "loads": loads}
 
 
-def missing(a):
-    return [x for x in STAGES[a["stage"]][2] if x not in a["have"]]
+def missing(a, ctx, dov=None):
+    return [x for x in required_items(a["stage"], a["type"], dov or ctx["docs"][a["rv"]]) if x not in a["have"]]
 
 
 def owner(a):
     return STAGES[a["stage"]][1]
 
 
-def risk(a, ctx, ov=None):
+def risk(a, ctx, ov=None, dov=None):
     if a["stage"] >= 6:
         return {"score": 0, "category": "Low", "factors": [], "bottleneck": "Closed", "next_action": "None", "responsible_role": "-", "disclaimer": DISCLAIMER}
     name, role, _ = STAGES[a["stage"]]
@@ -48,7 +49,7 @@ def risk(a, ctx, ov=None):
         add(40, "Past configured stage time", f"{el}d in {name}; configured {sla}d")
     elif el / sla >= .6:
         add(20, "Approaching stage deadline", f"{el}d of {sla}d used")
-    ms = missing(a)
+    ms = missing(a, ctx, dov)
     if ms:
         add(min(30, 12 * len(ms)), "Missing prerequisites", ", ".join(ms))
     h = a["ho"]
@@ -67,6 +68,9 @@ def risk(a, ctx, ov=None):
         bn, na, nr = "AICTE-side (handoff unacknowledged)", f"Acknowledge handoff for {a['id']}", role
     elif a["clar_since"] is not None or inst:
         bn, na, nr = "Institution-side", ("Respond to clarification" if a["clar_since"] is not None else "Upload " + ", ".join(inst)), ROLES[0]
+    elif any(PRODUCER.get(x, role) != role for x in ms):
+        x = next(x for x in ms if PRODUCER.get(x, role) != role)
+        bn, na, nr = "AICTE-side (internal prerequisite pending)", f"Record {x}, or return the file to the stage that owns it", PRODUCER[x]
     elif a["stage"] in (2, 3):
         bn, na, nr = "Scheduling-side", ("Resolve: " + ", ".join(ms) if ms else "Confirm visit schedule"), role
     elif s >= 30 and el >= sla:
@@ -84,8 +88,7 @@ def category(a, ctx):
 def findings(a, ctx):
     """Review flags only. A human decides whether a document is acceptable."""
     day, inst, out, need = ctx["day"], ctx["inst"][a["iid"]], [], []
-    for s in STAGES[:a["stage"] + 1]:
-        need += [x for x in s[2] if x in DOCS and x not in need]
+    need = [x for x in ctx["docs"][a["rv"]].get(a["type"], []) if DOC_STAGE.get(x, 9) <= a["stage"]]
     F = lambda sev, t, ev, fld, fix: out.append({"severity": sev, "finding": t, "evidence": ev, "fields": fld, "recommendation": fix})
     for n in need:
         if not any(d["name"] == n for d in a["docs"]):
@@ -121,13 +124,13 @@ def ob_status(o, day):
     return "Due soon" if o["due"] - day <= 14 else "Open"
 
 
-def blockers(a):
+def blockers(a, ctx):
     if a["stage"] >= 6:
         return ["Decision already recorded"]
     b = []
     if a["ho"] and a["ho"]["ack"] is None:
         b.append(f"Handoff not acknowledged by {owner(a)}")
-    b += [f"Missing prerequisite: {x}" for x in missing(a)]
+    b += [f"Missing prerequisite: {x}" + (f" (internal; only {PRODUCER[x]} can record it)" if x in PRODUCER else "") for x in missing(a, ctx)]
     if a["clar_since"] is not None:
         b.append("Clarification pending from institution")
     return b
@@ -141,13 +144,14 @@ def next_actions(user, db, ctx):
     for a in apps:
         if a["stage"] >= 6:
             continue
-        r, ms, own = risk(a, ctx), missing(a), role == owner(a)
+        r, ms, own = risk(a, ctx), missing(a, ctx), role == owner(a)
         if own and a["ho"] and a["ho"]["ack"] is None:
             add(90 + r["score"] / 10, f"Acknowledge handoff {a['id']}", f"Sent {day - a['ho']['sent']}d ago to {owner(a)}; unacknowledged work cannot be processed", "application", a["id"])
         elif own and not ms and a["clar_since"] is None:
             add(50 + r["score"] / 5, f"Advance {a['id']} from {STAGES[a['stage']][0]}", f"Prerequisites complete; {day - a['entered']}d in stage", "application", a["id"])
-        if own and ms and not all(x in DOCS for x in ms):
-            add(70, f"Review missing prerequisite for {a['id']}", ", ".join(ms) + " still outstanding", "application", a["id"])
+        for x in ms:
+            if x in PRODUCER and PRODUCER[x] == role:
+                add(72, f"Record {x} for {a['id']}", f"Required to leave {STAGES[a['stage']][0]}; only {role} can record it", "application", a["id"])
         if role == ROLES[0] and any(x in DOCS for x in ms):
             add(80, f"Upload {', '.join(x for x in ms if x in DOCS)} for {a['id']}", "Missing and blocks the next stage", "application", a["id"])
         if role == ROLES[0] and a["clar_since"] is not None:
