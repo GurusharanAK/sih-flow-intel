@@ -4,11 +4,10 @@ import base64, hashlib, hmac, json, os, re, secrets, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 from . import db as D, engine as E
-from .db import DOCS, ROLES, STAGES
+from .db import APP_TYPES, DOCS, PRODUCER, ROLES, STAGES, required_items
 
 SECRET = os.environ.get("FLOWINTEL_SECRET") or secrets.token_hex(16)  # dev default is per-process random; set it in .env
 ALLOW_ORIGIN = os.environ.get("FLOWINTEL_CORS", "*")
-APP_TYPES = ["New Institution", "Extension of Approval", "Increase in Intake", "Closure"]
 LOCK = threading.Lock()
 ROUTES = []
 INST, REG, SCR, EVC, SAC, ADM = ROLES
@@ -185,9 +184,16 @@ def create_app(req):
     req.db.execute("INSERT INTO documents(app_id,name,expiry,code,inst_name,issuer) VALUES(?,?,?,?,?,?)", (aid, "Application form", None, inst["code"], inst["name"], "Applicant"))
     sla = json.loads(req.db.execute("SELECT sla FROM rules WHERE version=?", (rv,)).fetchone()[0])
     req.db.execute("INSERT INTO handoffs(app_id,from_role,to_role,from_stage,to_stage,sent,ack,ack_by,expected_by,missing) VALUES(?,?,?,?,?,?,NULL,NULL,?,?)",
-                   (aid, INST, REG, "Applicant", "Submitted", req.day, req.day + sla["Submitted"], json.dumps(["Land document"])))
+                   (aid, INST, REG, "Applicant", "Submitted", req.day, req.day + sla["Submitted"], json.dumps([x for x in required_items(0, typ, req.ctx["docs"][rv]) if x != "Application form"])))
     req.audit("application.created", aid, f"{typ}; routed to {REG} queue")
     return 201, {"id": aid, "stage": "Submitted", "owner_role": REG}
+
+
+def clarification(db, a):
+    if a["clar_since"] is None:
+        return None
+    r = db.execute("SELECT detail FROM audit WHERE ref=? AND action='clarification.requested' ORDER BY id DESC LIMIT 1", (a["id"],)).fetchone()
+    return {"since": a["clar_since"], "reason": r["detail"] if r else ""}
 
 
 def detail(req, a):
@@ -195,7 +201,9 @@ def detail(req, a):
     hs = [handoff_view(dict(h), ctx) for h in db.execute("SELECT * FROM handoffs WHERE app_id=? ORDER BY id", (a["id"],))]
     obs = [obligation_view(dict(o), ctx["day"]) for o in db.execute("SELECT * FROM obligations WHERE iid=?", (a["iid"],))]
     hist = [dict(r) for r in db.execute("SELECT day,actor,role,action,detail FROM audit WHERE ref=? ORDER BY id", (a["id"],))]
-    return {**app_summary(a, ctx), "prerequisites_missing": E.missing(a) if a["stage"] < 6 else [], "blockers": E.blockers(a), "risk": E.risk(a, ctx),
+    return {**app_summary(a, ctx), "prerequisites_missing": E.missing(a, ctx) if a["stage"] < 6 else [], "blockers": E.blockers(a, ctx), "required_documents": ctx["docs"][a["rv"]].get(a["type"], []),
+            "missing_detail": [{"item": x, "provider_role": PRODUCER.get(x, ROLES[0]), "institution_provided": x in DOCS} for x in (E.missing(a, ctx) if a["stage"] < 6 else [])],
+            "clarification": clarification(db, a), "risk": E.risk(a, ctx),
             "override": a["ovr"], "clarification_pending": a["clar_since"] is not None, "documents": a["docs"], "document_findings": E.findings(a, ctx),
             "current_handoff": hs[-1] if hs else None, "handoff_history": hs, "obligations": obs, "history": hist,
             "configured_stage_days": ctx["slas"][a["rv"]][STAGES[a["stage"]][0]]}
@@ -213,7 +221,7 @@ def advance(req, aid):
         raise ApiError(409, "ALREADY_CLOSED", "A decision has already been recorded")
     if req.user["role"] != E.owner(a):
         req.denied(f"{req.user['role']} cannot move {aid}; stage owner is {E.owner(a)}")
-    b = E.blockers(a)
+    b = E.blockers(a, req.ctx)
     if b:
         req.audit("transition.blocked", aid, "; ".join(b))
         req.db.commit()
@@ -224,7 +232,7 @@ def advance(req, aid):
         nxt = STAGES[new]
         sla = req.ctx["slas"][a["rv"]][nxt[0]]
         req.db.execute("INSERT INTO handoffs(app_id,from_role,to_role,from_stage,to_stage,sent,ack,ack_by,expected_by,missing) VALUES(?,?,?,?,?,?,NULL,NULL,?,?)",
-                       (aid, frm[1], nxt[1], frm[0], nxt[0], req.day, req.day + sla, json.dumps([x for x in nxt[2] if x not in a["have"]])))
+                       (aid, frm[1], nxt[1], frm[0], nxt[0], req.day, req.day + sla, json.dumps([x for x in required_items(new, a["type"], req.ctx["docs"][a["rv"]]) if x not in a["have"]])))
         req.audit("stage.advanced", aid, f"{frm[0]} -> {nxt[0]}; handoff sent to {nxt[1]}")
     else:
         req.audit("decision.recorded", aid, "Authorised decision recorded by a human officer (system never decides)")
@@ -251,9 +259,61 @@ def clar(req, aid):
     a = req.app(aid)
     if req.user["role"] != E.owner(a):
         req.denied("only the current stage owner may request clarification")
+    why = req.field("reason")  # what the institution must clarify; internal items are not institution clarifications
+    if a["clar_since"] is not None:
+        raise ApiError(409, "ALREADY_PENDING", "A clarification is already pending")
     req.db.execute("UPDATE applications SET clar_since=? WHERE id=?", (req.day, aid))
-    req.audit("clarification.requested", aid, req.field("reason", required=False) or "")
+    req.audit("clarification.requested", aid, why)
     return {"id": aid, "clarification_pending": True}
+
+
+@route("POST", "/api/applications/{aid}/clarification/withdraw")
+def clar_withdraw(req, aid):
+    a = req.app(aid)
+    if req.user["role"] != E.owner(a):
+        req.denied("only the current stage owner may withdraw a clarification")
+    if a["clar_since"] is None:
+        raise ApiError(409, "NO_CLARIFICATION", "No clarification is pending")
+    req.db.execute("UPDATE applications SET clar_since=NULL WHERE id=?", (aid,))
+    req.audit("clarification.withdrawn", aid, req.field("reason", required=False) or "")
+    return {"id": aid, "clarification_pending": False}
+
+
+@route("POST", "/api/applications/{aid}/internal-items")
+def record_item(req, aid):
+    a = req.app(aid)
+    item = req.field("item")
+    if item not in PRODUCER:
+        raise ApiError(422, "VALIDATION_ERROR", f"'{item}' is not an internal item; institution documents are uploaded by the institution")
+    if req.user["role"] != PRODUCER[item]:
+        req.denied(f"{item} can only be recorded by {PRODUCER[item]}")
+    if item in a["have"]:
+        raise ApiError(409, "ALREADY_PRESENT", f"{item} is already recorded")
+    if item not in E.missing(a, req.ctx):
+        raise ApiError(409, "NOT_REQUIRED", f"{item} is not required at {STAGES[a['stage']][0]}")
+    req.db.execute("UPDATE applications SET have=? WHERE id=?", (json.dumps(a["have"] + [item]), aid))
+    req.audit("item.recorded", aid, item)
+    return 201, {"id": aid, "recorded": item}
+
+
+@route("POST", "/api/applications/{aid}/return")
+def send_back(req, aid):
+    a = req.app(aid)
+    if a["stage"] >= 6:
+        raise ApiError(409, "ALREADY_CLOSED", "A decision has already been recorded")
+    if req.user["role"] != E.owner(a):
+        req.denied(f"{req.user['role']} cannot return {aid}; stage owner is {E.owner(a)}")
+    if a["stage"] == 0:
+        raise ApiError(409, "FIRST_STAGE", "Submitted is the first stage; request a clarification from the institution instead")
+    why = req.field("reason")
+    frm, prev = STAGES[a["stage"]], a["stage"] - 1
+    to = STAGES[prev]
+    req.db.execute("UPDATE applications SET stage=?,entered=? WHERE id=?", (prev, req.day, aid))
+    req.db.execute("INSERT INTO handoffs(app_id,from_role,to_role,from_stage,to_stage,sent,ack,ack_by,expected_by,missing) VALUES(?,?,?,?,?,?,NULL,NULL,?,?)",
+                   (aid, frm[1], to[1], frm[0], to[0], req.day, req.day + req.ctx["slas"][a["rv"]][to[0]],
+                    json.dumps([x for x in required_items(prev, a["type"], req.ctx["docs"][a["rv"]]) if x not in a["have"]])))
+    req.audit("stage.returned", aid, f"{frm[0]} -> {to[0]} (returned to {to[1]}): {why}")
+    return {"id": aid, "stage": to[0], "owner_role": to[1]}
 
 
 @route("POST", "/api/applications/{aid}/clarification/respond", roles=(INST,))
@@ -268,7 +328,7 @@ def clar_resp(req, aid):
 def upload(req, aid):
     a = req.app(aid)
     item = req.field("item")
-    if item not in a["have"] and item not in [x for s in STAGES for x in s[2]]:
+    if item not in a["have"] and item not in DOCS and item not in {x for s in STAGES for x in s[2]}:
         raise ApiError(422, "VALIDATION_ERROR", f"Unknown prerequisite '{item}'")
     if item in a["have"]:
         raise ApiError(409, "ALREADY_PRESENT", f"{item} already on file")
@@ -374,13 +434,13 @@ def correction(req, oid):
 
 # ---------- rules ----------
 def rule_view(r):
-    return {"version": r["version"], "status": r["status"], "sla": json.loads(r["sla"]), "by": r["by_user"], "day": r["at"], "note": r["note"],
+    return {"version": r["version"], "status": r["status"], "sla": json.loads(r["sla"]), "docs": json.loads(r["docs"]) if r["docs"] else None, "by": r["by_user"], "day": r["at"], "note": r["note"],
             "migration": r["migration"], "validation_error": r["err"], "preview": json.loads(r["preview"]) if r["preview"] else None}
 
 
 @route("GET", "/api/rules")
 def rules(req):
-    return {"rule_id": "DEMO-SLA-01", "label": "DEMO values, not AICTE policy", "versions": [rule_view(r) for r in req.db.execute("SELECT * FROM rules ORDER BY version")]}
+    return {"rule_id": "DEMO-RULES-01", "rule_types": ["Stage time limits", "Required documents per application type"], "label": "DEMO values, not AICTE policy", "versions": [rule_view(r) for r in req.db.execute("SELECT * FROM rules ORDER BY version")]}
 
 
 def open_draft(req):
@@ -390,36 +450,70 @@ def open_draft(req):
     return d
 
 
+def cur_rule(req):
+    return req.db.execute("SELECT * FROM rules WHERE status='published' ORDER BY version DESC LIMIT 1").fetchone()
+
+
+def norm(docs):
+    return {t: sorted(v) for t, v in docs.items()}
+
+
 @route("POST", "/api/rules/draft", roles=(ADM,))
 def draft(req):
-    cur = req.db.execute("SELECT * FROM rules WHERE status='published' ORDER BY version DESC LIMIT 1").fetchone()
-    sla = json.loads(cur["sla"])
-    for k, v in (req.field("sla", dict)).items():
+    cur = cur_rule(req)
+    sla, docs, b = json.loads(cur["sla"]), json.loads(cur["docs"]), req.body or {}
+    if "sla" not in b and "docs" not in b:
+        raise ApiError(422, "VALIDATION_ERROR", "Provide 'sla' (stage time limits) and/or 'docs' (required documents per application type)")
+    if not isinstance(b.get("sla", {}), dict) or not isinstance(b.get("docs", {}), dict):
+        raise ApiError(422, "VALIDATION_ERROR", "'sla' and 'docs' must be objects")
+    for k, v in b.get("sla", {}).items():
         if k not in sla or k == "Decision recorded":
             raise ApiError(422, "VALIDATION_ERROR", f"Unknown stage '{k}'")
         sla[k] = v
+    for k, v in b.get("docs", {}).items():
+        if k not in APP_TYPES:
+            raise ApiError(422, "VALIDATION_ERROR", f"Unknown application type '{k}'")
+        if not isinstance(v, list):
+            raise ApiError(422, "VALIDATION_ERROR", f"Required documents for '{k}' must be a list")
+        docs[k] = v
     old = req.db.execute("SELECT version FROM rules WHERE status IN ('draft','validated','previewed')").fetchone()
     note = req.field("note", required=False) or ""
     if old:
-        req.db.execute("UPDATE rules SET status='draft',sla=?,note=?,err=NULL,preview=NULL,by_user=?,at=? WHERE version=?", (json.dumps(sla), note, req.user["username"], req.day, old[0]))
+        req.db.execute("UPDATE rules SET status='draft',sla=?,docs=?,note=?,err=NULL,preview=NULL,by_user=?,at=? WHERE version=?",
+                       (json.dumps(sla), json.dumps(docs), note, req.user["username"], req.day, old[0]))
         v = old[0]
     else:
         v = req.db.execute("SELECT MAX(version) FROM rules").fetchone()[0] + 1
-        req.db.execute("INSERT INTO rules(version,status,sla,by_user,at,note) VALUES(?,?,?,?,?,?)", (v, "draft", json.dumps(sla), req.user["username"], req.day, note))
-    req.audit("rule.drafted", f"DEMO-SLA-01 v{v}", note)
+        req.db.execute("INSERT INTO rules(version,status,sla,docs,by_user,at,note) VALUES(?,?,?,?,?,?,?)", (v, "draft", json.dumps(sla), json.dumps(docs), req.user["username"], req.day, note))
+    req.audit("rule.drafted", f"DEMO-RULES-01 v{v}", note)
     return 201, {"version": v, "status": "draft"}
 
 
 @route("POST", "/api/rules/draft/validate", roles=(ADM,))
 def validate(req):
-    d = open_draft(req)
-    sla = json.loads(d["sla"])
-    cur = json.loads(req.db.execute("SELECT sla FROM rules WHERE status='published' ORDER BY version DESC LIMIT 1").fetchone()[0])
+    d, cur = open_draft(req), cur_rule(req)
+    sla, docs, csla, cdocs = json.loads(d["sla"]), json.loads(d["docs"]), json.loads(cur["sla"]), json.loads(cur["docs"])
+    errs = []
     bad = [k for k, v in sla.items() if k != "Decision recorded" and not (isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 60)]
-    err = ("Limits must be whole days 1-60: " + ", ".join(bad)) if bad else "No change from current version" if sla == cur else "Add a change summary" if not d["note"] else None
+    if bad:
+        errs.append("Limits must be whole days 1-60: " + ", ".join(bad))
+    for t, lst in docs.items():
+        unknown = [x for x in lst if x not in DOCS]
+        if unknown:
+            errs.append(f"{t}: unknown documents {unknown}")
+        if len(set(lst)) != len(lst):
+            errs.append(f"{t}: duplicate documents")
+        if "Application form" not in lst:
+            errs.append(f"{t}: Application form is always required")
+    changed = [n for n, x, y in (("Stage time limits", sla, csla), ("Required documents", norm(docs), norm(cdocs))) if x != y]
+    if not errs and not changed:
+        errs.append("No change from current version")
+    if not errs and not d["note"]:
+        errs.append("Add a change summary")
+    err = "; ".join(errs) or None
     req.db.execute("UPDATE rules SET status=?,err=? WHERE version=?", ("draft" if err else "validated", err, d["version"]))
-    req.audit("rule.validated" if not err else "rule.validation_failed", f"DEMO-SLA-01 v{d['version']}", err or "ok")
-    return {"version": d["version"], "valid": not err, "error": err}
+    req.audit("rule.validated" if not err else "rule.validation_failed", f"DEMO-RULES-01 v{d['version']}", err or "ok: " + ", ".join(changed))
+    return {"version": d["version"], "valid": not err, "error": err, "changed_sections": changed}
 
 
 @route("POST", "/api/rules/draft/preview", roles=(ADM,))
@@ -427,16 +521,19 @@ def preview(req):
     d = open_draft(req)
     if d["status"] == "draft":
         raise ApiError(409, "NOT_VALIDATED", "Validate the draft before previewing impact")
-    sla, ctx, rows = json.loads(d["sla"]), req.ctx, []
+    sla, docs, ctx, rows = json.loads(d["sla"]), json.loads(d["docs"]), req.ctx, []
     for a in ctx["apps"]:
         if a["stage"] < 6:
-            o, n = E.risk(a, ctx), E.risk(a, ctx, sla)
-            rows.append({"application_id": a["id"], "stage": STAGES[a["stage"]][0], "current_rule_version": a["rv"], "risk_now": f"{o['category']} {o['score']}",
-                         "risk_under_draft": f"{n['category']} {n['score']}", "changed": o["score"] != n["score"]})
+            o, n = E.risk(a, ctx), E.risk(a, ctx, sla, docs)
+            now = E.missing(a, ctx)
+            new = [x for x in E.missing(a, ctx, docs) if x not in now]
+            rows.append({"application_id": a["id"], "type": a["type"], "stage": STAGES[a["stage"]][0], "current_rule_version": a["rv"], "risk_now": f"{o['category']} {o['score']}",
+                         "risk_under_draft": f"{n['category']} {n['score']}", "newly_required": new, "changed": o["score"] != n["score"] or bool(new)})
     pv = {"affected": sum(r["changed"] for r in rows), "in_progress": len(rows), "applications": rows,
-          "obligations_note": "This demo rule does not change obligation due dates; existing obligations are unaffected.", "historical_decisions": "Never rewritten"}
+          "note": "Shown as if in-progress applications were migrated. Choosing 'keep' leaves them on their current version; new applications use the new version.",
+          "obligations_note": "This demo rule set does not change obligation due dates; existing obligations are unaffected.", "historical_decisions": "Never rewritten"}
     req.db.execute("UPDATE rules SET status='previewed',preview=? WHERE version=?", (json.dumps(pv), d["version"]))
-    req.audit("rule.previewed", f"DEMO-SLA-01 v{d['version']}", f"{pv['affected']} of {pv['in_progress']} in-progress applications change risk")
+    req.audit("rule.previewed", f"DEMO-RULES-01 v{d['version']}", f"{pv['affected']} of {pv['in_progress']} in-progress applications affected")
     return pv
 
 
@@ -452,7 +549,7 @@ def publish(req):
     req.db.execute("UPDATE rules SET status='published',migration=?,by_user=?,at=? WHERE version=?", (m, req.user["username"], req.day, d["version"]))
     if m == "migrate":
         req.db.execute("UPDATE applications SET rv=? WHERE stage<6", (d["version"],))
-    req.audit("rule.published", f"DEMO-SLA-01 v{d['version']}", f"migration={m}; v{d['version'] - 1} retained")
+    req.audit("rule.published", f"DEMO-RULES-01 v{d['version']}", f"migration={m}; v{d['version'] - 1} retained")
     return {"version": d["version"], "status": "published", "migration": m}
 
 
@@ -573,6 +670,10 @@ class Handler(BaseHTTPRequestHandler):
 def make_server(host="127.0.0.1", port=8000, db_path=None):
     db = D.connect(db_path)
     db.executescript(D.SCHEMA)
+    if "docs" not in [r[1] for r in db.execute("PRAGMA table_info(rules)")]:  # upgrade an older database file
+        db.execute("ALTER TABLE rules ADD COLUMN docs TEXT")
+        db.execute("UPDATE rules SET docs=?", (json.dumps(D.BASE_DOCS),))
+        db.commit()
     if not db.execute("SELECT COUNT(*) FROM users").fetchone()[0]:
         D.seed(db)
     srv = ThreadingHTTPServer((host, port), Handler)
